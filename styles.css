@@ -443,6 +443,11 @@ button {
   gap: 12px;
 }
 
+.transaction-item {
+  width: 100%;
+  text-align: left;
+}
+
 .list-copy {
   flex: 1;
 }
@@ -473,6 +478,31 @@ button {
 
 .amount.debit {
   color: var(--text);
+}
+
+.transaction-amount {
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.transaction-amount.credit {
+  color: var(--success);
+}
+
+.transaction-amount.debit {
+  color: var(--primary-strong);
+}
+
+.transaction-detail-list {
+  gap: 10px;
+}
+
+.transaction-detail-row {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid var(--border);
 }
 
 .qr-stage {
@@ -782,6 +812,10 @@ button {
 .dark-mode .amount-input {
   background: rgba(38, 21, 13, 0.88);
   color: var(--text);
+}
+
+.dark-mode .transaction-detail-row {
+  background: rgba(38, 21, 13, 0.88);
 }
 
 .dark-mode .modal-sheet {

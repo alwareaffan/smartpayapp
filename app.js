@@ -27,6 +27,7 @@ const appState = {
   visibleBankAccountId: null,
   paymentBankAccountId: null,
   authRequest: null,
+  transactionDetailId: null,
   pendingAuthPhone: "",
   user: createEmptyUser(),
   selectedMerchant: null,
@@ -218,8 +219,53 @@ function goBack() {
 
 function renderApp() {
   body.classList.toggle("dark-mode", appState.darkMode);
-  screenMount.innerHTML = `${getScreenMarkup()}${renderAuthModal()}`;
+  screenMount.innerHTML = `${getScreenMarkup()}${renderAuthModal()}${renderTransactionModal()}`;
   bindEvents();
+}
+
+function renderTransactionModal() {
+  const transaction = appState.transactions.find((item) => String(item.id) === String(appState.transactionDetailId));
+  if (!transaction) {
+    return "";
+  }
+
+  const bankAccount = getSelectedPaymentBank() || getPrimaryBankAccount();
+  const detailRows = [
+    { label: "Status", value: transaction.type === "credit" ? "Received" : "Completed" },
+    { label: "Date", value: transaction.subtitle },
+    { label: "Reference", value: `SPTXN${String(transaction.id).slice(-6)}` },
+    { label: "Account", value: bankAccount ? formatAccountLabel(bankAccount) : "Smart Pay account" },
+    { label: "Category", value: transaction.title },
+  ];
+
+  return `
+    <div class="modal-backdrop">
+      <div class="modal-sheet stack">
+        <div class="row space-between">
+          <div class="row">
+            <div class="icon-wrap">${icons[transaction.icon] || icons.wallet}</div>
+            <div>
+              <h2>${transaction.title}</h2>
+              <p>${transaction.subtitle}</p>
+            </div>
+          </div>
+          <button class="icon-btn" data-action="close-transaction-detail" aria-label="Close transaction details">${icons.arrowLeft}</button>
+        </div>
+        <div class="transaction-amount ${transaction.type}">
+          ${transaction.type === "credit" ? "+" : "-"} ${currency(Math.abs(transaction.amount))}
+        </div>
+        <div class="stack transaction-detail-list">
+          ${detailRows.map((row) => `
+            <div class="row space-between transaction-detail-row">
+              <span class="muted">${row.label}</span>
+              <strong>${row.value}</strong>
+            </div>
+          `).join("")}
+        </div>
+        <button class="cta" data-action="close-transaction-detail">Done</button>
+      </div>
+    </div>
+  `;
 }
 
 function renderAuthModal() {
@@ -331,7 +377,7 @@ function renderTransactions(limit = appState.transactions.length) {
   return `
     <div class="list">
       ${appState.transactions.slice(0, limit).map((item) => `
-        <article class="list-item">
+        <button class="list-item transaction-item" data-transaction="${item.id}">
           <div class="icon-wrap">${icons[item.icon] || icons.wallet}</div>
           <div class="list-copy">
             <h3>${item.title}</h3>
@@ -340,7 +386,7 @@ function renderTransactions(limit = appState.transactions.length) {
           <div class="amount ${item.type}">
             ${item.type === "credit" ? "+" : "-"} ${currency(Math.abs(item.amount))}
           </div>
-        </article>
+        </button>
       `).join("")}
     </div>
   `;
@@ -1100,6 +1146,13 @@ function bindEvents() {
       setScreen("utilityForm");
     });
   });
+
+  document.querySelectorAll("[data-transaction]").forEach((element) => {
+    element.addEventListener("click", () => {
+      appState.transactionDetailId = element.dataset.transaction;
+      renderApp();
+    });
+  });
 }
 
 function handleAction(event) {
@@ -1195,6 +1248,10 @@ function handleAction(event) {
       break;
     case "cancel-auth":
       appState.authRequest = null;
+      renderApp();
+      break;
+    case "close-transaction-detail":
+      appState.transactionDetailId = null;
       renderApp();
       break;
     default:
