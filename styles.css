@@ -308,6 +308,13 @@ button {
   box-shadow: var(--shadow-sm);
 }
 
+.lang-btn {
+  min-width: 48px;
+  width: auto;
+  padding: 0 12px;
+  font-weight: 800;
+}
+
 .topbar {
   display: flex;
   align-items: center;

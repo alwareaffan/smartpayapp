@@ -19,8 +19,10 @@ const demoUser = {
 const appState = {
   currentScreen: "splash",
   authMode: null,
+  otpPurpose: "auth",
   bankLinkMode: "signup",
   darkMode: false,
+  language: "en",
   biometricEnabled: true,
   notificationsEnabled: true,
   balanceVisible: false,
@@ -28,6 +30,7 @@ const appState = {
   paymentBankAccountId: null,
   authRequest: null,
   transactionDetailId: null,
+  pendingBankLink: null,
   pendingAuthPhone: "",
   user: createEmptyUser(),
   selectedMerchant: null,
@@ -103,6 +106,16 @@ function currency(amount) {
   }).format(amount);
 }
 
+function tr(en, sw) {
+  return appState.language === "sw" ? sw : en;
+}
+
+function renderLanguageButton(variant = "icon-btn") {
+  const next = appState.language === "en" ? "SW" : "EN";
+  const label = appState.language === "en" ? "Switch to Swahili" : "Badilisha hadi Kiingereza";
+  return `<button class="${variant} lang-btn" data-action="toggle-language" aria-label="${label}">${next}</button>`;
+}
+
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -161,6 +174,7 @@ function resetSensitiveViews() {
   appState.visibleBankAccountId = null;
   appState.paymentBankAccountId = null;
   appState.authRequest = null;
+  appState.transactionDetailId = null;
 }
 
 function loadDemoUser(phoneOverride = "") {
@@ -175,8 +189,10 @@ function loadDemoUser(phoneOverride = "") {
 
 function startSignupFlow() {
   appState.authMode = "signup";
+  appState.otpPurpose = "auth";
   appState.pendingAuthPhone = "";
   appState.bankLinkMode = "signup";
+  appState.pendingBankLink = null;
   appState.user = createEmptyUser();
   resetSensitiveViews();
   setScreen("mobile");
@@ -192,7 +208,7 @@ function goBack() {
   const routeMap = {
     login: () => setScreen("splash"),
     mobile: () => setScreen("splash"),
-    otp: () => setScreen(appState.authMode === "login" ? "login" : "mobile"),
+    otp: () => setScreen(appState.otpPurpose === "bank" ? "bankLink" : (appState.authMode === "login" ? "login" : "mobile")),
     bankLink: () => setScreen(appState.bankLinkMode === "add" ? "bankAccounts" : "otp"),
     bankAccounts: () => setScreen("settings"),
     scan: () => setScreen("payments"),
@@ -347,10 +363,10 @@ function layout({ title, subtitle = "", content, showBack = false, nav = true, h
 
 function bottomNav() {
   const tabs = [
-    { id: "home", label: "Home", icon: icons.home },
-    { id: "payments", label: "Payments", icon: icons.wallet },
-    { id: "bills", label: "Bills", icon: icons.bill },
-    { id: "profile", label: "Profile", icon: icons.profile },
+    { id: "home", label: tr("Home", "Nyumbani"), icon: icons.home },
+    { id: "payments", label: tr("Payments", "Malipo"), icon: icons.wallet },
+    { id: "bills", label: tr("Bills", "Bili"), icon: icons.bill },
+    { id: "profile", label: tr("Profile", "Wasifu"), icon: icons.profile },
   ];
 
   const rootScreen = ["scan", "amountEntry", "paymentConfirm", "paymentSuccess", "history"].includes(appState.currentScreen)
@@ -459,16 +475,17 @@ function renderSplash() {
   return `
     <section class="screen">
       <div class="brand-block">
+        <div class="chip-row" style="justify-content:center; margin-bottom:16px;">${renderLanguageButton("tag")}</div>
         <div class="logo-mark"><img class="brand-logo" src="${brandAssets.logo}" alt="Smart Pay"></div>
-        <p class="hero-chip">Unified Payments</p>
-        <p class="brand-tagline">Secure app login first, then bank accounts, then payments.</p>
+        <p class="hero-chip">${tr("Unified Payments", "Malipo Yaliyounganishwa")}</p>
+        <p class="brand-tagline">${tr("Secure app login first, then bank accounts, then payments.", "Ingia kwanza kwenye programu, kisha ongeza akaunti za benki, halafu ufanye malipo.")}</p>
         <div class="hero-panel stack">
           <div>
-            <h2 style="margin:0 0 8px; font-size:1.2rem;">Choose how to enter SmartPay</h2>
-            <p class="muted" style="margin:0;">Sign up to create the app account and add your first bank, or log in with OTP or biometric access.</p>
+            <h2 style="margin:0 0 8px; font-size:1.2rem;">${tr("Choose how to enter SmartPay", "Chagua namna ya kuingia SmartPay")}</h2>
+            <p class="muted" style="margin:0;">${tr("Sign up to create the app account and add your first bank, or log in with OTP or biometric access.", "Jisajili kuunda akaunti ya programu na kuongeza benki yako ya kwanza, au ingia kwa OTP au uthibitisho wa kibayometriki.")}</p>
           </div>
-          <button class="cta" data-action="go-login">Log In</button>
-          <button class="secondary-btn" data-action="go-signup">Sign Up</button>
+          <button class="cta" data-action="go-login">${tr("Log In", "Ingia")}</button>
+          <button class="secondary-btn" data-action="go-signup">${tr("Sign Up", "Jisajili")}</button>
         </div>
       </div>
     </section>
@@ -477,9 +494,10 @@ function renderSplash() {
 
 function renderLogin() {
   return layout({
-    title: "Log in to SmartPay",
-    subtitle: "Use your mobile number with OTP or continue with biometric login.",
+    title: tr("Log in to SmartPay", "Ingia kwenye SmartPay"),
+    subtitle: tr("Use your mobile number with OTP or continue with biometric login.", "Tumia namba yako ya simu kwa OTP au endelea kwa kibayometriki."),
     showBack: true,
+    headerAction: renderLanguageButton(),
     nav: false,
     content: `
       <div class="stack">
@@ -488,13 +506,13 @@ function renderLogin() {
         </div>
         <div class="form-card stack">
           <div class="field">
-            <label for="loginMobileNumber">Mobile number</label>
+            <label for="loginMobileNumber">${tr("Mobile number", "Namba ya simu")}</label>
             <input id="loginMobileNumber" class="input" type="tel" inputmode="numeric" placeholder="+255 7XX XXX XXX" value="${appState.pendingAuthPhone}">
           </div>
-          <p class="muted" style="margin:0;">Use any demo mobile number and OTP 123456.</p>
+          <p class="muted" style="margin:0;">${tr("Use any demo mobile number and OTP 123456.", "Tumia namba yoyote ya majaribio na OTP 123456.")}</p>
         </div>
-        <button class="cta" data-action="submit-login-mobile">Send OTP</button>
-        <button class="secondary-btn" data-action="biometric-login">${icons.face} Continue with biometric login</button>
+        <button class="cta" data-action="submit-login-mobile">${tr("Send OTP", "Tuma OTP")}</button>
+        <button class="secondary-btn" data-action="biometric-login">${icons.face} ${tr("Continue with biometric login", "Endelea kwa kibayometriki")}</button>
       </div>
     `,
   });
@@ -502,9 +520,10 @@ function renderLogin() {
 
 function renderMobileInput() {
   return layout({
-    title: "Create your account",
-    subtitle: "Sign up for the SmartPay app with your mobile number.",
+    title: tr("Create your account", "Fungua akaunti yako"),
+    subtitle: tr("Sign up for the SmartPay app with your mobile number.", "Jisajili kwenye programu ya SmartPay kwa namba yako ya simu."),
     showBack: true,
+    headerAction: renderLanguageButton(),
     nav: false,
     content: `
       <div class="stack">
@@ -513,38 +532,45 @@ function renderMobileInput() {
         </div>
         <div class="form-card stack">
           <div class="field">
-            <label for="mobileNumber">Mobile number</label>
+            <label for="mobileNumber">${tr("Mobile number", "Namba ya simu")}</label>
             <input id="mobileNumber" class="input" type="tel" inputmode="numeric" placeholder="+255 7XX XXX XXX" value="${appState.user.phone}">
           </div>
-          <p class="muted" style="margin:0;">This sign-up creates the app account before your bank account is added.</p>
+          <p class="muted" style="margin:0;">${tr("This sign-up creates the app account before your bank account is added.", "Usajili huu unaunda akaunti ya programu kabla ya kuongeza akaunti ya benki.")}</p>
         </div>
-        <button class="cta" data-action="submit-signup-mobile">Send OTP</button>
+        <button class="cta" data-action="submit-signup-mobile">${tr("Send OTP", "Tuma OTP")}</button>
       </div>
     `,
   });
 }
 
 function renderOtp() {
-  const phone = appState.authMode === "login" ? appState.pendingAuthPhone : appState.user.phone;
-  const subtitle = appState.authMode === "login"
-    ? `A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to log in.`
-    : `A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to continue sign-up.`;
+  const phone = appState.otpPurpose === "bank"
+    ? appState.pendingBankLink?.accountNumber || ""
+    : appState.authMode === "login"
+      ? appState.pendingAuthPhone
+      : appState.user.phone;
+  const subtitle = appState.otpPurpose === "bank"
+    ? tr(`Your bank has sent a demo OTP for account ${phone || "ending"} verification. Use 654321 to approve this bank link.`, `Benki yako imetuma OTP ya majaribio kwa uthibitishaji wa akaunti ${phone || "ya mwisho"}. Tumia 654321 kuidhinisha uunganishaji huu wa benki.`)
+    : appState.authMode === "login"
+      ? tr(`A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to log in.`, `OTP ya majaribio imetumwa kwenda ${phone || "+255 700 000 000"}. Tumia 123456 kuingia.`)
+      : tr(`A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to continue sign-up.`, `OTP ya majaribio imetumwa kwenda ${phone || "+255 700 000 000"}. Tumia 123456 kuendelea na usajili.`);
 
   return layout({
-    title: "Verify OTP",
+    title: appState.otpPurpose === "bank" ? tr("Verify Bank OTP", "Thibitisha OTP ya Benki") : tr("Verify OTP", "Thibitisha OTP"),
     subtitle,
     showBack: true,
+    headerAction: renderLanguageButton(),
     nav: false,
     content: `
       <div class="stack">
         <div class="form-card stack">
           <div class="field">
-            <label for="otpInput">One-time password</label>
-            <input id="otpInput" class="input" type="tel" inputmode="numeric" maxlength="6" placeholder="123456">
+            <label for="otpInput">${tr("One-time password", "Nenosiri la muda")}</label>
+            <input id="otpInput" class="input" type="tel" inputmode="numeric" maxlength="6" placeholder="${appState.otpPurpose === "bank" ? "654321" : "123456"}">
           </div>
-          <div class="tag">Mock validation enabled</div>
+          <div class="tag">${tr("Mock validation enabled", "Uthibitishaji wa majaribio umewashwa")}</div>
         </div>
-        <button class="cta" data-action="submit-otp">Verify and continue</button>
+        <button class="cta" data-action="submit-otp">${tr("Verify and continue", "Thibitisha na uendelee")}</button>
       </div>
     `,
   });
@@ -552,15 +578,16 @@ function renderOtp() {
 
 function renderBankLink() {
   const isSignupBank = appState.bankLinkMode !== "add";
-  const title = isSignupBank ? "Add your first bank" : "Add another bank";
+  const title = isSignupBank ? tr("Add your first bank", "Ongeza benki yako ya kwanza") : tr("Add another bank", "Ongeza benki nyingine");
   const subtitle = isSignupBank
-    ? "Every SmartPay account starts with at least one linked bank account."
-    : "Link an additional bank account for payments and balance checks.";
+    ? tr("Every SmartPay account starts with at least one linked bank account.", "Kila akaunti ya SmartPay huanza na angalau akaunti moja ya benki iliyounganishwa.")
+    : tr("Link an additional bank account for payments and balance checks.", "Unganisha akaunti nyingine ya benki kwa malipo na ukaguzi wa salio.");
 
   return layout({
     title,
     subtitle,
     showBack: true,
+    headerAction: renderLanguageButton(),
     nav: false,
     content: `
       <div class="stack">
@@ -569,25 +596,25 @@ function renderBankLink() {
         </div>
         <div class="form-card stack">
           <div class="field">
-            <label for="bankSelect">Select bank</label>
+            <label for="bankSelect">${tr("Select bank", "Chagua benki")}</label>
             <select id="bankSelect" class="select">
-              <option value="">Choose a bank</option>
+              <option value="">${tr("Choose a bank", "Chagua benki")}</option>
               ${appState.banks.map((bank) => `<option value="${bank}">${bank}</option>`).join("")}
             </select>
           </div>
           <div class="field">
-            <label for="accountNumber">Account number</label>
-            <input id="accountNumber" class="input" type="text" inputmode="numeric" placeholder="Enter 8-12 digits">
+            <label for="accountNumber">${tr("Account number", "Namba ya akaunti")}</label>
+            <input id="accountNumber" class="input" type="text" inputmode="numeric" placeholder="${tr("Enter 8-12 digits", "Weka tarakimu 8-12")}">
           </div>
           ${isSignupBank ? `
             <div class="field">
-              <label for="upiPin">Set UPI PIN</label>
-              <input id="upiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN">
+              <label for="upiPin">${tr("Set UPI PIN", "Weka PIN ya UPI")}</label>
+              <input id="upiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="${tr("4-digit PIN", "PIN ya tarakimu 4")}">
             </div>
           ` : ""}
-          <p class="muted" style="margin:0;">This is a mock bank-linking flow with frontend-only validation.</p>
+          <p class="muted" style="margin:0;">${tr("This is a mock bank-linking flow with frontend-only validation.", "Huu ni mtiririko wa majaribio wa kuunganisha benki wenye uthibitishaji wa upande wa mbele pekee.")}</p>
         </div>
-        <button class="cta" data-action="link-bank">${isSignupBank ? "Finish setup" : "Add bank account"}</button>
+        <button class="cta" data-action="link-bank">${isSignupBank ? tr("Finish setup", "Kamilisha usanidi") : tr("Add bank account", "Ongeza akaunti ya benki")}</button>
       </div>
     `,
   });
@@ -596,10 +623,10 @@ function renderBankLink() {
 function renderHome() {
   const selectedBalanceBank = getSelectedBalanceBank();
   const bankSummary = getBankAccounts().length > 1
-    ? `${getBankAccounts().length} linked bank accounts`
+    ? `${getBankAccounts().length} ${tr("linked bank accounts", "akaunti za benki zilizounganishwa")}`
     : getPrimaryBankAccount()
       ? formatAccountLabel(getPrimaryBankAccount())
-      : "No bank linked";
+      : tr("No bank linked", "Hakuna benki iliyounganishwa");
 
   return layout({
     title: "",
@@ -610,57 +637,57 @@ function renderHome() {
         <div class="profile-block">
           <div class="avatar"><img src="${brandAssets.icon}" alt="Smart Pay icon"></div>
           <div>
-            <div class="muted" style="font-size:0.8rem;">Hello</div>
+            <div class="muted" style="font-size:0.8rem;">${tr("Hello", "Hujambo")}</div>
             <h1 class="screen-title" style="margin-top:2px;">${appState.user.name}</h1>
           </div>
         </div>
-        <div class="tag">${icons.shield} Secure mode</div>
+        <div class="tag">${icons.shield} ${tr("Secure mode", "Hali salama")}</div>
       </div>
 
       <section class="balance-card">
-        <div class="balance-label">${appState.balanceVisible && selectedBalanceBank ? selectedBalanceBank.bankName : "Check a bank balance"}</div>
+        <div class="balance-label">${appState.balanceVisible && selectedBalanceBank ? selectedBalanceBank.bankName : tr("Check a bank balance", "Angalia salio la benki")}</div>
         <div class="balance-row">
           <div class="balance-value">${appState.balanceVisible && selectedBalanceBank ? currency(selectedBalanceBank.balance) : maskBalance()}</div>
           <button class="balance-toggle" data-action="${appState.balanceVisible ? "hide-balance" : "request-balance-visibility"}">
-            ${appState.balanceVisible ? "Hide" : "Show"}
+            ${appState.balanceVisible ? tr("Hide", "Ficha") : tr("Show", "Onyesha")}
           </button>
         </div>
         <div class="balance-meta">
           <span>${appState.balanceVisible && selectedBalanceBank ? formatAccountLabel(selectedBalanceBank) : bankSummary}</span>
-          <span>Total ${currency(getTotalBalance())}</span>
+          <span>${tr("Total", "Jumla")} ${currency(getTotalBalance())}</span>
         </div>
       </section>
 
       <div class="section-head">
-        <h2>Quick actions</h2>
-        <span class="muted">Pay faster</span>
+        <h2>${tr("Quick actions", "Vitendo vya haraka")}</h2>
+        <span class="muted">${tr("Pay faster", "Lipa haraka")}</span>
       </div>
       <div class="quick-grid">
         <button class="quick-action" data-nav="scan">
           <div class="icon-wrap">${icons.qr}</div>
-          <strong>Scan QR</strong>
-          <span class="muted">Merchant payment</span>
+          <strong>${tr("Scan QR", "Changanua QR")}</strong>
+          <span class="muted">${tr("Merchant payment", "Malipo ya mfanyabiashara")}</span>
         </button>
         <button class="quick-action" data-action="contact-payment">
           <div class="icon-wrap">${icons.contact}</div>
-          <strong>Pay Contacts</strong>
-          <span class="muted">Transfer instantly</span>
+          <strong>${tr("Pay Contacts", "Lipa Mawasiliano")}</strong>
+          <span class="muted">${tr("Transfer instantly", "Hamisha papo hapo")}</span>
         </button>
         <button class="quick-action" data-action="bank-transfer">
           <div class="icon-wrap">${icons.transfer}</div>
-          <strong>Bank Transfer</strong>
-          <span class="muted">To any account</span>
+          <strong>${tr("Bank Transfer", "Hamisho la Benki")}</strong>
+          <span class="muted">${tr("To any account", "Kwa akaunti yoyote")}</span>
         </button>
         <button class="quick-action" data-bill-category="recharge">
           <div class="icon-wrap">${icons.phone}</div>
-          <strong>Mobile Recharge</strong>
-          <span class="muted">Top up now</span>
+          <strong>${tr("Mobile Recharge", "Ongeza Salio")}</strong>
+          <span class="muted">${tr("Top up now", "Ongeza sasa")}</span>
         </button>
       </div>
 
       <div class="section-head">
-        <h2>Recent transactions</h2>
-        <button class="muted" data-nav="history">View all</button>
+        <h2>${tr("Recent transactions", "Miamala ya karibuni")}</h2>
+        <button class="muted" data-nav="history">${tr("View all", "Tazama yote")}</button>
       </div>
       ${renderTransactions(4)}
     `,
@@ -669,33 +696,33 @@ function renderHome() {
 
 function renderPayments() {
   return layout({
-    title: "Payments",
-    subtitle: "Choose how you want to send money.",
+    title: tr("Payments", "Malipo"),
+    subtitle: tr("Choose how you want to send money.", "Chagua namna unavyotaka kutuma pesa."),
     content: `
       <div class="payments-grid">
         <button class="payments-tile" data-nav="scan">
           <div class="icon-wrap">${icons.qr}</div>
-          <strong>Scan QR</strong>
-          <span class="muted">Pay merchants instantly</span>
+          <strong>${tr("Scan QR", "Changanua QR")}</strong>
+          <span class="muted">${tr("Pay merchants instantly", "Lipa wafanyabiashara papo hapo")}</span>
         </button>
         <button class="payments-tile" data-action="contact-payment">
           <div class="icon-wrap">${icons.contact}</div>
-          <strong>Pay Contacts</strong>
-          <span class="muted">Send to saved contacts</span>
+          <strong>${tr("Pay Contacts", "Lipa Mawasiliano")}</strong>
+          <span class="muted">${tr("Send to saved contacts", "Tuma kwa mawasiliano yaliyohifadhiwa")}</span>
         </button>
         <button class="payments-tile" data-action="bank-transfer">
           <div class="icon-wrap">${icons.transfer}</div>
-          <strong>Bank Transfer</strong>
-          <span class="muted">Move funds to bank</span>
+          <strong>${tr("Bank Transfer", "Hamisho la Benki")}</strong>
+          <span class="muted">${tr("Move funds to bank", "Hamisha fedha kwenda benki")}</span>
         </button>
         <button class="payments-tile" data-nav="history">
           <div class="icon-wrap">${icons.wallet}</div>
-          <strong>History</strong>
-          <span class="muted">Review all activity</span>
+          <strong>${tr("History", "Historia")}</strong>
+          <span class="muted">${tr("Review all activity", "Pitia shughuli zote")}</span>
         </button>
       </div>
       <div class="section-head">
-        <h2>Suggested merchants</h2>
+        <h2>${tr("Suggested merchants", "Wafanyabiashara waliopendekezwa")}</h2>
       </div>
       <div class="list">
         ${appState.merchants.map((merchant) => `
@@ -1005,8 +1032,8 @@ function renderProfile() {
 function renderSettings() {
   const primaryBank = getPrimaryBankAccount();
   return layout({
-    title: "Settings",
-    subtitle: "Profile, bank accounts, and security controls.",
+    title: tr("Settings", "Mipangilio"),
+    subtitle: tr("Profile, bank accounts, and security controls.", "Wasifu, akaunti za benki, na vidhibiti vya usalama."),
     showBack: true,
     content: `
       <div class="list settings-list">
@@ -1014,41 +1041,61 @@ function renderSettings() {
           <div class="row">
             <div class="icon-wrap">${icons.profile}</div>
             <div class="list-copy">
-              <h3>Profile</h3>
-              <p>${appState.user.name} - ${appState.user.phone || "Not added"}</p>
+              <h3>${tr("Profile", "Wasifu")}</h3>
+              <p>${appState.user.name} - ${appState.user.phone || tr("Not added", "Haijaongezwa")}</p>
             </div>
           </div>
-          <span class="muted">Editable</span>
+          <span class="muted">${tr("Editable", "Inahaririwa")}</span>
         </article>
         <button class="list-item" data-nav="bankAccounts">
           <div class="row">
             <div class="icon-wrap">${icons.bank}</div>
             <div class="list-copy">
-              <h3>Bank accounts</h3>
-              <p>${getBankAccounts().length === 1 ? `${primaryBank?.bankName || "1"} linked account` : `${getBankAccounts().length} linked accounts${primaryBank ? ` - ${primaryBank.bankName} primary` : ""}`}</p>
+              <h3>${tr("Bank accounts", "Akaunti za benki")}</h3>
+              <p>${getBankAccounts().length === 1 ? `${primaryBank?.bankName || "1"} ${tr("linked account", "akaunti iliyounganishwa")}` : `${getBankAccounts().length} ${tr("linked accounts", "akaunti zilizounganishwa")}${primaryBank ? ` - ${primaryBank.bankName} ${tr("primary", "kuu")}` : ""}`}</p>
             </div>
           </div>
-          <span class="muted">Manage</span>
+          <span class="muted">${tr("Manage", "Simamia")}</span>
+        </button>
+        <button class="list-item" data-action="toggle-language">
+          <div class="row">
+            <div class="icon-wrap">${icons.wallet}</div>
+            <div class="list-copy">
+              <h3>${tr("Language", "Lugha")}</h3>
+              <p>${appState.language === "en" ? "English" : "Kiswahili"}</p>
+            </div>
+          </div>
+          <span class="muted">${appState.language === "en" ? "SW" : "EN"}</span>
         </button>
         <button class="list-item" data-nav="security">
           <div class="row">
             <div class="icon-wrap">${icons.shield}</div>
             <div class="list-copy">
-              <h3>Security</h3>
-              <p>Change UPI PIN and biometric settings</p>
+              <h3>${tr("Security", "Usalama")}</h3>
+              <p>${tr("Change UPI PIN and biometric settings", "Badili PIN ya UPI na mipangilio ya kibayometriki")}</p>
             </div>
           </div>
-          <span class="muted">Open</span>
+          <span class="muted">${tr("Open", "Fungua")}</span>
         </button>
         <button class="list-item" data-action="toggle-dark">
           <div class="row">
             <div class="icon-wrap">${icons.moon}</div>
             <div class="list-copy">
-              <h3>Dark mode</h3>
-              <p>Switch the app theme</p>
+              <h3>${tr("Dark mode", "Mandhari ya giza")}</h3>
+              <p>${tr("Switch the app theme", "Badili mandhari ya programu")}</p>
             </div>
           </div>
           <span class="pill-toggle ${appState.darkMode ? "active" : ""}"></span>
+        </button>
+        <button class="list-item" data-action="logout">
+          <div class="row">
+            <div class="icon-wrap">${icons.arrowLeft}</div>
+            <div class="list-copy">
+              <h3>${tr("Log out", "Toka")}</h3>
+              <p>${tr("Return to the login screen", "Rudi kwenye skrini ya kuingia")}</p>
+            </div>
+          </div>
+          <span class="muted">${tr("Exit", "Toka")}</span>
         </button>
       </div>
     `,
@@ -1057,8 +1104,8 @@ function renderSettings() {
 
 function renderBankAccounts() {
   return layout({
-    title: "Bank accounts",
-    subtitle: "Add more banks and use them during balance checks or payments.",
+    title: tr("Bank accounts", "Akaunti za benki"),
+    subtitle: tr("Add more banks and use them during balance checks or payments.", "Ongeza benki zaidi na uzitumie wakati wa ukaguzi wa salio au malipo."),
     showBack: true,
     content: `
       <div class="stack">
@@ -1068,13 +1115,13 @@ function renderBankAccounts() {
               <div class="icon-wrap">${icons.bank}</div>
               <div class="list-copy">
                 <h3>${account.bankName}</h3>
-                <p>${formatAccountLabel(account)}${account.isPrimary ? " - Primary" : ""}</p>
+                <p>${formatAccountLabel(account)}${account.isPrimary ? ` - ${tr("Primary", "Kuu")}` : ""}</p>
               </div>
               <div class="amount">${currency(account.balance)}</div>
             </article>
           `).join("")}
         </div>
-        <button class="cta" data-action="start-add-bank">Add another bank</button>
+        <button class="cta" data-action="start-add-bank">${tr("Add another bank", "Ongeza benki nyingine")}</button>
       </div>
     `,
   });
@@ -1082,37 +1129,37 @@ function renderBankAccounts() {
 
 function renderSecurity() {
   return layout({
-    title: "Security",
-    subtitle: "Manage UPI PIN and authentication options.",
+    title: tr("Security", "Usalama"),
+    subtitle: tr("Manage UPI PIN and authentication options.", "Simamia PIN ya UPI na chaguo za uthibitishaji."),
     showBack: true,
     content: `
       <div class="stack">
         <div class="form-card stack">
           <div class="field">
-            <label for="newPin">Change UPI PIN</label>
-            <input id="newPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="Enter new 4-digit PIN">
+            <label for="newPin">${tr("Change UPI PIN", "Badili PIN ya UPI")}</label>
+            <input id="newPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="${tr("Enter new 4-digit PIN", "Weka PIN mpya ya tarakimu 4")}">
           </div>
-          <button class="secondary-btn" data-action="update-pin">Update PIN</button>
+          <button class="secondary-btn" data-action="update-pin">${tr("Update PIN", "Sasisha PIN")}</button>
         </div>
         <article class="list-item">
           <div class="row">
             <div class="icon-wrap">${icons.face}</div>
             <div class="list-copy">
-              <h3>Biometric login</h3>
-              <p>Use your fingerprint or face to unlock SmartPay</p>
+              <h3>${tr("Biometric login", "Kuingia kwa kibayometriki")}</h3>
+              <p>${tr("Use your fingerprint or face to unlock SmartPay", "Tumia alama ya kidole au uso kufungua SmartPay")}</p>
             </div>
           </div>
-          <button class="pill-toggle ${appState.biometricEnabled ? "active" : ""}" data-action="toggle-biometric" aria-label="Toggle biometric login"></button>
+          <button class="pill-toggle ${appState.biometricEnabled ? "active" : ""}" data-action="toggle-biometric" aria-label="${tr("Toggle biometric login", "Badili kuingia kwa kibayometriki")}"></button>
         </article>
         <article class="list-item">
           <div class="row">
             <div class="icon-wrap">${icons.bell}</div>
             <div class="list-copy">
-              <h3>Payment alerts</h3>
-              <p>Receive notifications for account activity</p>
+              <h3>${tr("Payment alerts", "Arifa za malipo")}</h3>
+              <p>${tr("Receive notifications for account activity", "Pokea arifa za shughuli za akaunti")}</p>
             </div>
           </div>
-          <button class="pill-toggle ${appState.notificationsEnabled ? "active" : ""}" data-action="toggle-alerts" aria-label="Toggle payment alerts"></button>
+          <button class="pill-toggle ${appState.notificationsEnabled ? "active" : ""}" data-action="toggle-alerts" aria-label="${tr("Toggle payment alerts", "Badili arifa za malipo")}"></button>
         </article>
       </div>
     `,
@@ -1159,8 +1206,13 @@ function handleAction(event) {
   const action = event.currentTarget.dataset.action;
 
   switch (action) {
+    case "toggle-language":
+      appState.language = appState.language === "en" ? "sw" : "en";
+      renderApp();
+      break;
     case "go-login":
       appState.authMode = "login";
+      appState.otpPurpose = "auth";
       setScreen("login");
       break;
     case "go-signup":
@@ -1184,6 +1236,9 @@ function handleAction(event) {
     case "start-add-bank":
       appState.bankLinkMode = "add";
       setScreen("bankLink");
+      break;
+    case "logout":
+      logoutUser();
       break;
     case "back":
       goBack();
@@ -1261,7 +1316,7 @@ function handleAction(event) {
 
 function openAuthModal(type) {
   if (!getBankAccounts().length) {
-    window.alert("Please add a bank account first.");
+    window.alert(tr("Please add a bank account first.", "Tafadhali ongeza akaunti ya benki kwanza."));
     return;
   }
 
@@ -1277,11 +1332,11 @@ function submitAuth() {
   const bankAccountId = document.getElementById("authBankAccount")?.value || getDefaultAuthBankId();
 
   if (!bankAccountId) {
-    window.alert("Please choose a bank account.");
+    window.alert(tr("Please choose a bank account.", "Tafadhali chagua akaunti ya benki."));
     return;
   }
   if (pin !== appState.user.upiPin) {
-    window.alert("Incorrect UPI PIN.");
+    window.alert(tr("Incorrect UPI PIN.", "PIN ya UPI si sahihi."));
     return;
   }
 
@@ -1315,11 +1370,12 @@ function submitLoginMobile() {
   const input = document.getElementById("loginMobileNumber");
   const phone = input?.value.trim() || "";
   if (!validatePhone(phone)) {
-    window.alert("Please enter a valid mobile number.");
+    window.alert(tr("Please enter a valid mobile number.", "Tafadhali weka namba sahihi ya simu."));
     return;
   }
 
   appState.authMode = "login";
+  appState.otpPurpose = "auth";
   appState.pendingAuthPhone = phone;
   setScreen("otp");
 }
@@ -1328,11 +1384,12 @@ function submitSignupMobile() {
   const input = document.getElementById("mobileNumber");
   const phone = input?.value.trim() || "";
   if (!validatePhone(phone)) {
-    window.alert("Please enter a valid mobile number.");
+    window.alert(tr("Please enter a valid mobile number.", "Tafadhali weka namba sahihi ya simu."));
     return;
   }
 
   appState.authMode = "signup";
+  appState.otpPurpose = "auth";
   appState.user.phone = phone;
   appState.pendingAuthPhone = phone;
   setScreen("otp");
@@ -1345,8 +1402,14 @@ function biometricLogin() {
 
 function submitOtp() {
   const otp = document.getElementById("otpInput")?.value.trim();
-  if (otp !== "123456") {
-    window.alert("Use the demo OTP: 123456");
+  const expectedOtp = appState.otpPurpose === "bank" ? "654321" : "123456";
+  if (otp !== expectedOtp) {
+    window.alert(tr(`Use the demo OTP: ${expectedOtp}`, `Tumia OTP ya majaribio: ${expectedOtp}`));
+    return;
+  }
+
+  if (appState.otpPurpose === "bank") {
+    finalizeBankLink();
     return;
   }
 
@@ -1367,18 +1430,29 @@ function submitBankLink() {
   const isSignupBank = appState.bankLinkMode !== "add";
 
   if (!bank) {
-    window.alert("Please select a bank.");
+    window.alert(tr("Please select a bank.", "Tafadhali chagua benki."));
     return;
   }
   if (!/^\d{8,12}$/.test(accountNumber)) {
-    window.alert("Enter a valid 8 to 12 digit account number.");
+    window.alert(tr("Enter a valid 8 to 12 digit account number.", "Weka namba sahihi ya akaunti yenye tarakimu 8 hadi 12."));
     return;
   }
   if (isSignupBank && !/^\d{4}$/.test(upiPin)) {
-    window.alert("Set a 4-digit UPI PIN.");
+    window.alert(tr("Set a 4-digit UPI PIN.", "Weka PIN ya UPI ya tarakimu 4."));
     return;
   }
 
+  appState.pendingBankLink = { bank, accountNumber, upiPin, isSignupBank };
+  appState.otpPurpose = "bank";
+  setScreen("otp");
+}
+
+function finalizeBankLink() {
+  if (!appState.pendingBankLink) {
+    return;
+  }
+
+  const { bank, accountNumber, upiPin, isSignupBank } = appState.pendingBankLink;
   if (isSignupBank) {
     appState.user.upiPin = upiPin;
   }
@@ -1389,6 +1463,8 @@ function submitBankLink() {
   appState.visibleBankAccountId = newAccount.id;
   appState.paymentBankAccountId = newAccount.id;
   appState.balanceVisible = false;
+  appState.pendingBankLink = null;
+  appState.otpPurpose = "auth";
 
   if (isSignupBank) {
     setScreen("home");
@@ -1398,10 +1474,25 @@ function submitBankLink() {
   setScreen("bankAccounts");
 }
 
+function logoutUser() {
+  appState.user = createEmptyUser();
+  appState.authMode = "login";
+  appState.otpPurpose = "auth";
+  appState.bankLinkMode = "signup";
+  appState.pendingBankLink = null;
+  appState.pendingAuthPhone = "";
+  appState.pendingAmount = "";
+  appState.selectedMerchant = null;
+  appState.selectedBillCategory = null;
+  appState.fetchedBill = null;
+  resetSensitiveViews();
+  setScreen("login");
+}
+
 function confirmAmount() {
   const amount = document.getElementById("paymentAmount")?.value || "";
   if (Number(amount) <= 0) {
-    window.alert("Please enter a valid amount.");
+    window.alert(tr("Please enter a valid amount.", "Tafadhali weka kiasi sahihi."));
     return;
   }
   appState.pendingAmount = amount;
@@ -1412,7 +1503,7 @@ function confirmAmount() {
 function makePayment() {
   const amount = Number(appState.pendingAmount || 0);
   if (amount <= 0) {
-    window.alert("Payment amount is invalid.");
+    window.alert(tr("Payment amount is invalid.", "Kiasi cha malipo si sahihi."));
     return;
   }
 
@@ -1424,15 +1515,15 @@ function finalizePayment() {
   const bankAccount = getSelectedPaymentBank();
 
   if (amount <= 0) {
-    window.alert("Payment amount is invalid.");
+    window.alert(tr("Payment amount is invalid.", "Kiasi cha malipo si sahihi."));
     return;
   }
   if (!bankAccount) {
-    window.alert("Please choose a bank account.");
+    window.alert(tr("Please choose a bank account.", "Tafadhali chagua akaunti ya benki."));
     return;
   }
   if (bankAccount.balance < amount) {
-    window.alert("Insufficient funds in the selected bank account.");
+    window.alert(tr("Insufficient funds in the selected bank account.", "Fedha hazitoshi kwenye akaunti ya benki iliyochaguliwa."));
     return;
   }
 
@@ -1452,7 +1543,7 @@ function finalizePayment() {
 function fetchBill() {
   const ref = document.getElementById("utilityRef")?.value.trim() || "";
   if (ref.length < 6) {
-    window.alert("Please enter a valid reference number.");
+    window.alert(tr("Please enter a valid reference number.", "Tafadhali weka namba sahihi ya rejea."));
     return;
   }
 
@@ -1466,7 +1557,7 @@ function fetchBill() {
 
 function payBill() {
   if (!appState.fetchedBill) {
-    window.alert("Fetch a bill first.");
+    window.alert(tr("Fetch a bill first.", "Leta bili kwanza."));
     return;
   }
 
@@ -1477,15 +1568,15 @@ function payBill() {
 function finalizeBillPayment() {
   const bankAccount = getSelectedPaymentBank();
   if (!appState.fetchedBill) {
-    window.alert("Fetch a bill first.");
+    window.alert(tr("Fetch a bill first.", "Leta bili kwanza."));
     return;
   }
   if (!bankAccount) {
-    window.alert("Please choose a bank account.");
+    window.alert(tr("Please choose a bank account.", "Tafadhali chagua akaunti ya benki."));
     return;
   }
   if (bankAccount.balance < appState.fetchedBill.amount) {
-    window.alert("Insufficient funds in the selected bank account.");
+    window.alert(tr("Insufficient funds in the selected bank account.", "Fedha hazitoshi kwenye akaunti ya benki iliyochaguliwa."));
     return;
   }
 
@@ -1504,12 +1595,12 @@ function finalizeBillPayment() {
 function updatePin() {
   const newPin = document.getElementById("newPin")?.value.trim() || "";
   if (!/^\d{4}$/.test(newPin)) {
-    window.alert("Enter a valid 4-digit PIN.");
+    window.alert(tr("Enter a valid 4-digit PIN.", "Weka PIN sahihi ya tarakimu 4."));
     return;
   }
 
   appState.user.upiPin = newPin;
-  window.alert("UPI PIN updated successfully.");
+  window.alert(tr("UPI PIN updated successfully.", "PIN ya UPI imesasishwa kwa mafanikio."));
   setScreen("settings");
 }
 
