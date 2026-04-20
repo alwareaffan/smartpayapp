@@ -4,6 +4,8 @@ const appState = {
   darkMode: false,
   biometricEnabled: true,
   notificationsEnabled: true,
+  balanceVisible: false,
+  authRequest: null,
   user: {
     name: "Affan",
     phone: "",
@@ -115,8 +117,51 @@ function goBack() {
 
 function renderApp() {
   body.classList.toggle("dark-mode", appState.darkMode);
-  screenMount.innerHTML = getScreenMarkup();
+  screenMount.innerHTML = `${getScreenMarkup()}${renderAuthModal()}`;
   bindEvents();
+}
+
+function renderAuthModal() {
+  if (!appState.authRequest) {
+    return "";
+  }
+
+  const copy = {
+    balance: {
+      title: "Show balance",
+      description: "Enter your UPI PIN to reveal the available balance.",
+      cta: "Verify and show",
+    },
+    payment: {
+      title: "Authorize payment",
+      description: "Enter your UPI PIN to continue with this payment.",
+      cta: "Authorize payment",
+    },
+    bill: {
+      title: "Authorize bill payment",
+      description: "Enter your UPI PIN to pay this bill securely.",
+      cta: "Authorize bill payment",
+    },
+  }[appState.authRequest.type];
+
+  return `
+    <div class="modal-backdrop">
+      <div class="modal-sheet stack">
+        <div>
+          <h2>${copy.title}</h2>
+          <p>${copy.description}</p>
+        </div>
+        <div class="field">
+          <label for="authUpiPin">UPI PIN</label>
+          <input id="authUpiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="Enter 4-digit PIN">
+        </div>
+        <div class="split">
+          <button class="secondary-btn" data-action="cancel-auth">Cancel</button>
+          <button class="cta" data-action="submit-auth">${copy.cta}</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function layout({ title, subtitle = "", content, showBack = false, nav = true, headerAction = "" }) {
@@ -355,7 +400,12 @@ function renderHome() {
 
       <section class="balance-card">
         <div class="balance-label">Total balance</div>
-        <div class="balance-value">${currency(appState.user.balance)}</div>
+        <div class="balance-row">
+          <div class="balance-value">${appState.balanceVisible ? currency(appState.user.balance) : "TZS ••••••"}</div>
+          <button class="balance-toggle" data-action="${appState.balanceVisible ? "hide-balance" : "request-balance-visibility"}">
+            ${appState.balanceVisible ? "Hide" : "Show"}
+          </button>
+        </div>
         <div class="balance-meta">
           <span>${appState.user.bank || "Primary bank"} linked</span>
           <span>UPI ready</span>
@@ -910,8 +960,53 @@ function handleAction(event) {
       appState.notificationsEnabled = !appState.notificationsEnabled;
       renderApp();
       break;
+    case "request-balance-visibility":
+      openAuthModal("balance");
+      break;
+    case "hide-balance":
+      appState.balanceVisible = false;
+      renderApp();
+      break;
+    case "submit-auth":
+      submitAuth();
+      break;
+    case "cancel-auth":
+      appState.authRequest = null;
+      renderApp();
+      break;
     default:
       break;
+  }
+}
+
+function openAuthModal(type) {
+  appState.authRequest = { type };
+  renderApp();
+}
+
+function submitAuth() {
+  const pin = document.getElementById("authUpiPin")?.value.trim() || "";
+  if (pin !== appState.user.upiPin) {
+    window.alert("Incorrect UPI PIN.");
+    return;
+  }
+
+  const authType = appState.authRequest?.type;
+  appState.authRequest = null;
+
+  if (authType === "balance") {
+    appState.balanceVisible = true;
+    renderApp();
+    return;
+  }
+
+  if (authType === "payment") {
+    finalizePayment();
+    return;
+  }
+
+  if (authType === "bill") {
+    finalizeBillPayment();
   }
 }
 
@@ -976,6 +1071,16 @@ function makePayment() {
     return;
   }
 
+  openAuthModal("payment");
+}
+
+function finalizePayment() {
+  const amount = Number(appState.pendingAmount || 0);
+  if (amount <= 0) {
+    window.alert("Payment amount is invalid.");
+    return;
+  }
+
   appState.user.balance -= amount;
   appState.transactions.unshift({
     id: Date.now(),
@@ -1005,6 +1110,15 @@ function fetchBill() {
 }
 
 function payBill() {
+  if (!appState.fetchedBill) {
+    window.alert("Fetch a bill first.");
+    return;
+  }
+
+  openAuthModal("bill");
+}
+
+function finalizeBillPayment() {
   if (!appState.fetchedBill) {
     window.alert("Fetch a bill first.");
     return;
