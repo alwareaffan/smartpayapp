@@ -117,6 +117,16 @@ function renderLanguageButton(variant = "icon-btn") {
   return `<button class="${variant} lang-btn" data-action="toggle-language" aria-label="${label}">${next}</button>`;
 }
 
+function renderBottomTagline(nav = true) {
+  return `
+    <section class="screen-tagline ${nav ? "with-nav" : "no-nav"}">
+      <div class="screen-tagline-copy">Powering Everyday Payments ❤️</div>
+      <div class="screen-tagline-rule"></div>
+      <div class="screen-tagline-brand">SmartPay</div>
+    </section>
+  `;
+}
+
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -357,7 +367,10 @@ function layout({ title, subtitle = "", content, showBack = false, nav = true, h
         </div>
         ${headerAction || `<div style="width:42px;"></div>`}
       </header>
-      <div class="screen-body">${content}</div>
+      <div class="screen-body">
+        ${content}
+        ${renderBottomTagline(nav)}
+      </div>
       ${nav ? bottomNav() : ""}
     </section>
   `;
@@ -484,8 +497,6 @@ function renderSplash() {
       <div class="brand-block">
         <div class="chip-row" style="justify-content:center; margin-bottom:16px;">${renderLanguageButton("tag")}</div>
         <div class="logo-mark"><img class="brand-logo" src="${brandAssets.logo}" alt="Smart Pay"></div>
-        <p class="hero-chip">${tr("Unified Payments", "Malipo Yaliyounganishwa")}</p>
-        <p class="brand-tagline">${tr("Secure app login first, then bank accounts, then payments.", "Ingia kwanza kwenye programu, kisha ongeza akaunti za benki, halafu ufanye malipo.")}</p>
         <div class="hero-panel stack">
           <div>
             <h2 style="margin:0 0 8px; font-size:1.2rem;">${tr("Choose how to enter SmartPay", "Chagua namna ya kuingia SmartPay")}</h2>
@@ -494,6 +505,7 @@ function renderSplash() {
           <button class="cta" data-action="go-login">${tr("Log In", "Ingia")}</button>
           <button class="secondary-btn" data-action="go-signup">${tr("Sign Up", "Jisajili")}</button>
         </div>
+        ${renderBottomTagline(false)}
       </div>
     </section>
   `;
