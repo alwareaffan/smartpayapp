@@ -155,7 +155,7 @@ button {
 }
 
 .brand-logo {
-  width: min(100%, 270px);
+  width: min(100%, 220px);
   margin: 0 auto 14px;
   display: block;
   object-fit: contain;
@@ -756,6 +756,32 @@ button {
 
 .settings-list .list-item {
   justify-content: space-between;
+}
+
+.settings-list .list-item,
+.settings-list article.list-item {
+  width: 100%;
+  text-align: left;
+  gap: 14px;
+}
+
+.settings-list .row {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-list .list-copy {
+  min-width: 0;
+}
+
+.settings-list .list-copy h3,
+.settings-list .list-copy p {
+  word-break: break-word;
+}
+
+.settings-list .muted,
+.settings-list .pill-toggle {
+  flex-shrink: 0;
 }
 
 .pill-toggle {
