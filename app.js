@@ -35,6 +35,7 @@ const appState = {
   user: createEmptyUser(),
   selectedMerchant: null,
   pendingAmount: "",
+  pendingTransfer: null,
   selectedBillCategory: null,
   fetchedBill: null,
   transactions: [
@@ -213,7 +214,8 @@ function goBack() {
     bankAccounts: () => setScreen("settings"),
     scan: () => setScreen("payments"),
     amountEntry: () => setScreen(appState.selectedMerchant ? "payments" : "home"),
-    paymentConfirm: () => setScreen("amountEntry"),
+    bankTransfer: () => setScreen("payments"),
+    paymentConfirm: () => setScreen(appState.selectedMerchant?.id === "banktransfer" ? "bankTransfer" : "amountEntry"),
     paymentSuccess: () => setScreen("home"),
     payments: () => setScreen("home"),
     bills: () => setScreen("home"),
@@ -370,7 +372,7 @@ function bottomNav() {
     { id: "profile", label: tr("Profile", "Wasifu"), icon: icons.profile },
   ];
 
-  const rootScreen = ["scan", "amountEntry", "paymentConfirm", "paymentSuccess", "history"].includes(appState.currentScreen)
+  const rootScreen = ["scan", "amountEntry", "bankTransfer", "paymentConfirm", "paymentSuccess", "history"].includes(appState.currentScreen)
     ? "payments"
     : ["utilityForm", "utilitySuccess"].includes(appState.currentScreen)
       ? "bills"
@@ -445,6 +447,8 @@ function getScreenMarkup() {
       return renderScan();
     case "amountEntry":
       return renderAmountEntry();
+    case "bankTransfer":
+      return renderBankTransfer();
     case "paymentConfirm":
       return renderPaymentConfirm();
     case "paymentSuccess":
@@ -795,33 +799,75 @@ function renderAmountEntry() {
   });
 }
 
+function renderBankTransfer() {
+  const transfer = appState.pendingTransfer || {};
+  return layout({
+    title: tr("Bank Transfer", "Hamisho la Benki"),
+    subtitle: tr("Enter recipient bank details to continue.", "Weka taarifa za benki ya mpokeaji ili kuendelea."),
+    showBack: true,
+    content: `
+      <div class="stack">
+        <div class="form-card stack">
+          <div class="field">
+            <label for="transferBank">${tr("Select Bank", "Chagua Benki")}</label>
+            <select id="transferBank" class="select">
+              <option value="">${tr("Choose a bank", "Chagua benki")}</option>
+              ${appState.banks.map((bank) => `<option value="${bank}" ${transfer.bankName === bank ? "selected" : ""}>${bank}</option>`).join("")}
+            </select>
+          </div>
+          <div class="field">
+            <label for="transferAccount">${tr("Enter Bank Account", "Weka Akaunti ya Benki")}</label>
+            <input id="transferAccount" class="input" type="text" inputmode="numeric" placeholder="${tr("Enter 8-18 digits", "Weka tarakimu 8-18")}" value="${transfer.accountNumber || ""}">
+          </div>
+          <div class="field">
+            <label for="transferSwift">${tr("Enter Swift Code", "Weka Swift Code")}</label>
+            <input id="transferSwift" class="input" type="text" placeholder="${tr("Example: SBICTZTZ", "Mfano: SBICTZTZ")}" value="${transfer.swiftCode || ""}">
+          </div>
+          <div class="field">
+            <label for="transferAmount">${tr("Amount", "Kiasi")}</label>
+            <input id="transferAmount" class="input" type="number" inputmode="decimal" placeholder="0" value="${appState.pendingAmount || ""}">
+          </div>
+        </div>
+        <button class="cta" data-action="submit-bank-transfer">${tr("Pay", "Lipa")}</button>
+      </div>
+    `,
+  });
+}
+
 function renderPaymentConfirm() {
   const merchant = appState.selectedMerchant || appState.merchants[0];
+  const isBankTransfer = merchant.id === "banktransfer";
   return layout({
-    title: "Confirm payment",
-    subtitle: "Review the payment details below.",
+    title: tr("Confirm payment", "Thibitisha malipo"),
+    subtitle: tr("Review the payment details below.", "Pitia maelezo ya malipo hapa chini."),
     showBack: true,
     content: `
       <div class="stack">
         <div class="form-card stack">
           <div class="row space-between">
-            <span class="muted">To</span>
-            <strong>${merchant.name}</strong>
+            <span class="muted">${tr("To", "Kwa")}</span>
+            <strong>${isBankTransfer ? appState.pendingTransfer?.bankName || merchant.name : merchant.name}</strong>
           </div>
           <div class="row space-between">
-            <span class="muted">UPI ID</span>
-            <strong>${merchant.upiId}</strong>
+            <span class="muted">${isBankTransfer ? tr("Account", "Akaunti") : "UPI ID"}</span>
+            <strong>${isBankTransfer ? appState.pendingTransfer?.accountNumber || "-" : merchant.upiId}</strong>
           </div>
+          ${isBankTransfer ? `
+            <div class="row space-between">
+              <span class="muted">${tr("Swift Code", "Swift Code")}</span>
+              <strong>${appState.pendingTransfer?.swiftCode || "-"}</strong>
+            </div>
+          ` : ""}
           <div class="row space-between">
-            <span class="muted">Amount</span>
+            <span class="muted">${tr("Amount", "Kiasi")}</span>
             <strong>${currency(Number(appState.pendingAmount || 0))}</strong>
           </div>
           <div class="row space-between">
-            <span class="muted">From</span>
-            <strong>${appState.paymentBankAccountId ? formatAccountLabel(getSelectedPaymentBank()) : "Choose bank during payment"}</strong>
+            <span class="muted">${tr("From", "Kutoka")}</span>
+            <strong>${appState.paymentBankAccountId ? formatAccountLabel(getSelectedPaymentBank()) : tr("Choose bank during payment", "Chagua benki wakati wa malipo")}</strong>
           </div>
         </div>
-        <button class="cta" data-action="make-payment">Pay now</button>
+        <button class="cta" data-action="make-payment">${tr("Pay now", "Lipa sasa")}</button>
       </div>
     `,
   });
@@ -830,9 +876,10 @@ function renderPaymentConfirm() {
 function renderPaymentSuccess() {
   const merchant = appState.selectedMerchant || appState.merchants[0];
   const bankAccount = getSelectedPaymentBank();
+  const isBankTransfer = merchant.id === "banktransfer";
   return layout({
-    title: "Payment complete",
-    subtitle: "Your transaction has been processed successfully.",
+    title: tr("Payment complete", "Malipo yamekamilika"),
+    subtitle: tr("Your transaction has been processed successfully.", "Muamala wako umefanikiwa kuchakatwa."),
     nav: false,
     content: `
       <div class="success-card stack">
@@ -841,11 +888,11 @@ function renderPaymentSuccess() {
         </div>
         <div>
           <h2 style="margin:0;">Paid ${currency(Number(appState.pendingAmount || 0))}</h2>
-          <p class="muted" style="margin:8px 0 0;">Sent to ${merchant.name}</p>
-          <p class="muted" style="margin:8px 0 0;">Paid from ${bankAccount ? formatAccountLabel(bankAccount) : "your selected bank"}</p>
+          <p class="muted" style="margin:8px 0 0;">${isBankTransfer ? `${tr("Sent to", "Imetumwa kwa")} ${appState.pendingTransfer?.bankName || merchant.name}` : `${tr("Sent to", "Imetumwa kwa")} ${merchant.name}`}</p>
+          <p class="muted" style="margin:8px 0 0;">${tr("Paid from", "Imelipwa kutoka")} ${bankAccount ? formatAccountLabel(bankAccount) : tr("your selected bank", "benki yako uliyochagua")}</p>
         </div>
-        <div class="tag" style="margin:0 auto;">Reference: SP${Date.now().toString().slice(-6)}</div>
-        <button class="cta" data-nav="home">Back to home</button>
+        <div class="tag" style="margin:0 auto;">${tr("Reference", "Rejea")}: SP${Date.now().toString().slice(-6)}</div>
+        <button class="cta" data-nav="home">${tr("Back to home", "Rudi nyumbani")}</button>
       </div>
     `,
   });
@@ -1269,13 +1316,18 @@ function handleAction(event) {
       break;
     case "contact-payment":
       appState.selectedMerchant = { id: "contact", name: "Amina Yusuf", upiId: "amina@smartpay" };
+      appState.pendingTransfer = null;
       appState.pendingAmount = "";
       setScreen("amountEntry");
       break;
     case "bank-transfer":
       appState.selectedMerchant = { id: "banktransfer", name: "Bank Transfer", upiId: "transfer@smartpay" };
+      appState.pendingTransfer = null;
       appState.pendingAmount = "";
-      setScreen("amountEntry");
+      setScreen("bankTransfer");
+      break;
+    case "submit-bank-transfer":
+      submitBankTransfer();
       break;
     case "toggle-dark":
       appState.darkMode = !appState.darkMode;
@@ -1484,6 +1536,7 @@ function logoutUser() {
   appState.pendingBankLink = null;
   appState.pendingAuthPhone = "";
   appState.pendingAmount = "";
+  appState.pendingTransfer = null;
   appState.selectedMerchant = null;
   appState.selectedBillCategory = null;
   appState.fetchedBill = null;
@@ -1497,6 +1550,35 @@ function confirmAmount() {
     window.alert(tr("Please enter a valid amount.", "Tafadhali weka kiasi sahihi."));
     return;
   }
+  appState.pendingAmount = amount;
+  appState.paymentBankAccountId = null;
+  setScreen("paymentConfirm");
+}
+
+function submitBankTransfer() {
+  const bankName = document.getElementById("transferBank")?.value || "";
+  const accountNumber = document.getElementById("transferAccount")?.value.trim() || "";
+  const swiftCode = document.getElementById("transferSwift")?.value.trim().toUpperCase() || "";
+  const amount = document.getElementById("transferAmount")?.value || "";
+
+  if (!bankName) {
+    window.alert(tr("Please select a bank.", "Tafadhali chagua benki."));
+    return;
+  }
+  if (!/^\d{8,18}$/.test(accountNumber)) {
+    window.alert(tr("Enter a valid bank account number.", "Weka namba sahihi ya akaunti ya benki."));
+    return;
+  }
+  if (!/^[A-Z0-9]{8,11}$/.test(swiftCode)) {
+    window.alert(tr("Enter a valid Swift Code.", "Weka Swift Code sahihi."));
+    return;
+  }
+  if (Number(amount) <= 0) {
+    window.alert(tr("Please enter a valid amount.", "Tafadhali weka kiasi sahihi."));
+    return;
+  }
+
+  appState.pendingTransfer = { bankName, accountNumber, swiftCode };
   appState.pendingAmount = amount;
   appState.paymentBankAccountId = null;
   setScreen("paymentConfirm");
@@ -1532,11 +1614,13 @@ function finalizePayment() {
   bankAccount.balance -= amount;
   appState.transactions.unshift({
     id: Date.now(),
-    title: appState.selectedMerchant?.name || "New Payment",
+    title: appState.selectedMerchant?.id === "banktransfer"
+      ? `${tr("Bank Transfer", "Hamisho la Benki")} - ${appState.pendingTransfer?.bankName || ""}`.trim()
+      : appState.selectedMerchant?.name || "New Payment",
     subtitle: `Just now - ${bankAccount.bankName}`,
     amount: -amount,
     type: "debit",
-    icon: appState.selectedMerchant?.id === "contact" ? "contact" : "shop",
+    icon: appState.selectedMerchant?.id === "contact" ? "contact" : appState.selectedMerchant?.id === "banktransfer" ? "bank" : "shop",
   });
 
   setScreen("paymentSuccess");
