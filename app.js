@@ -1,22 +1,38 @@
+function createEmptyUser() {
+  return {
+    name: "Affan",
+    phone: "",
+    upiPin: "",
+    bankAccounts: [],
+  };
+}
+
+const demoUser = {
+  name: "Affan",
+  phone: "+255 712 345 678",
+  upiPin: "1234",
+  bankAccounts: [
+    { id: "bank-1", bankName: "CRDB Bank", accountNumber: "20481234", balance: 48250.75, isPrimary: true },
+  ],
+};
+
 const appState = {
   currentScreen: "splash",
-  onboardingStep: "mobile",
+  authMode: null,
+  bankLinkMode: "signup",
   darkMode: false,
   biometricEnabled: true,
   notificationsEnabled: true,
   balanceVisible: false,
+  visibleBankAccountId: null,
+  paymentBankAccountId: null,
   authRequest: null,
-  user: {
-    name: "Affan",
-    phone: "",
-    bank: "",
-    accountNumber: "",
-    upiPin: "",
-    balance: 48250.75,
-  },
+  pendingAuthPhone: "",
+  user: createEmptyUser(),
   selectedMerchant: null,
   pendingAmount: "",
   selectedBillCategory: null,
+  fetchedBill: null,
   transactions: [
     { id: 1, title: "Cafe Bloom", subtitle: "Today, 09:12 AM", amount: -850, type: "debit", icon: "shop" },
     { id: 2, title: "Salary Credit", subtitle: "Today, 08:00 AM", amount: 125000, type: "credit", icon: "bank" },
@@ -26,7 +42,7 @@ const appState = {
   ],
   notifications: [
     { id: 1, title: "Cashback unlocked", body: "You earned TZS 1,500 on your electricity bill.", time: "2m ago", unread: true },
-    { id: 2, title: "Bank linked successfully", body: "CRDB account ending 2048 is ready for SmartPay.", time: "1h ago", unread: false },
+    { id: 2, title: "Bank linked successfully", body: "Your SmartPay bank account is ready for payments.", time: "1h ago", unread: false },
     { id: 3, title: "Security tip", body: "Change your UPI PIN regularly to keep payments secure.", time: "Yesterday", unread: false },
   ],
   rewards: [
@@ -46,7 +62,6 @@ const appState = {
     { id: "dth", label: "DTH", field: "Subscriber ID", hint: "Enter DTH subscriber number", icon: "tv" },
     { id: "water", label: "Water", field: "Consumer Number", hint: "Enter water account number", icon: "drop" },
   ],
-  fetchedBill: null,
 };
 
 const screenMount = document.getElementById("screenMount");
@@ -74,12 +89,96 @@ const icons = {
   shop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h16l-1 12H5L4 8Z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path></svg>`,
 };
 
+const brandAssets = {
+  logo: "assets/brand-logo.png",
+  icon: "assets/brand-icon.png",
+};
+
 function currency(amount) {
   return new Intl.NumberFormat("en-TZ", {
     style: "currency",
     currency: "TZS",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function getBankAccounts() {
+  return appState.user.bankAccounts || [];
+}
+
+function getBankAccountById(id) {
+  return getBankAccounts().find((account) => account.id === id) || null;
+}
+
+function getPrimaryBankAccount() {
+  return getBankAccounts().find((account) => account.isPrimary) || getBankAccounts()[0] || null;
+}
+
+function getSelectedBalanceBank() {
+  return getBankAccountById(appState.visibleBankAccountId) || getPrimaryBankAccount();
+}
+
+function getSelectedPaymentBank() {
+  return getBankAccountById(appState.paymentBankAccountId) || getPrimaryBankAccount();
+}
+
+function getTotalBalance() {
+  return getBankAccounts().reduce((sum, account) => sum + account.balance, 0);
+}
+
+function getDefaultAuthBankId() {
+  return appState.authRequest?.bankAccountId || getSelectedPaymentBank()?.id || getPrimaryBankAccount()?.id || "";
+}
+
+function maskBalance() {
+  return "TZS ******";
+}
+
+function formatAccountLabel(account) {
+  if (!account) {
+    return "No bank selected";
+  }
+  return `${account.bankName} - ${account.accountNumber.slice(-4)}`;
+}
+
+function createBankAccount(bankName, accountNumber, balance) {
+  return {
+    id: `bank-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    bankName,
+    accountNumber,
+    balance,
+    isPrimary: getBankAccounts().length === 0,
+  };
+}
+
+function resetSensitiveViews() {
+  appState.balanceVisible = false;
+  appState.visibleBankAccountId = null;
+  appState.paymentBankAccountId = null;
+  appState.authRequest = null;
+}
+
+function loadDemoUser(phoneOverride = "") {
+  appState.user = deepClone(demoUser);
+  if (phoneOverride) {
+    appState.user.phone = phoneOverride;
+  }
+  appState.authMode = "login";
+  appState.pendingAuthPhone = appState.user.phone;
+  resetSensitiveViews();
+}
+
+function startSignupFlow() {
+  appState.authMode = "signup";
+  appState.pendingAuthPhone = "";
+  appState.bankLinkMode = "signup";
+  appState.user = createEmptyUser();
+  resetSensitiveViews();
+  setScreen("mobile");
 }
 
 function setScreen(screen, options = {}) {
@@ -90,11 +189,13 @@ function setScreen(screen, options = {}) {
 
 function goBack() {
   const routeMap = {
-    otp: () => setScreen("mobile"),
-    bankLink: () => setScreen("otp"),
-    home: () => setScreen("bankLink"),
-    scan: () => setScreen("home"),
-    amountEntry: () => setScreen("scan"),
+    login: () => setScreen("splash"),
+    mobile: () => setScreen("splash"),
+    otp: () => setScreen(appState.authMode === "login" ? "login" : "mobile"),
+    bankLink: () => setScreen(appState.bankLinkMode === "add" ? "bankAccounts" : "otp"),
+    bankAccounts: () => setScreen("settings"),
+    scan: () => setScreen("payments"),
+    amountEntry: () => setScreen(appState.selectedMerchant ? "payments" : "home"),
     paymentConfirm: () => setScreen("amountEntry"),
     paymentSuccess: () => setScreen("home"),
     payments: () => setScreen("home"),
@@ -129,20 +230,24 @@ function renderAuthModal() {
   const copy = {
     balance: {
       title: "Show balance",
-      description: "Enter your UPI PIN to reveal the available balance.",
+      description: "Choose the bank account and enter your UPI PIN to reveal the balance.",
       cta: "Verify and show",
+      requiresBank: true,
     },
     payment: {
       title: "Authorize payment",
-      description: "Enter your UPI PIN to continue with this payment.",
+      description: "Choose the bank account and enter your UPI PIN to continue with this payment.",
       cta: "Authorize payment",
+      requiresBank: true,
     },
     bill: {
       title: "Authorize bill payment",
-      description: "Enter your UPI PIN to pay this bill securely.",
+      description: "Choose the bank account and enter your UPI PIN to pay this bill securely.",
       cta: "Authorize bill payment",
+      requiresBank: true,
     },
   }[appState.authRequest.type];
+  const shouldChooseBank = getBankAccounts().length > 1;
 
   return `
     <div class="modal-backdrop">
@@ -151,6 +256,19 @@ function renderAuthModal() {
           <h2>${copy.title}</h2>
           <p>${copy.description}</p>
         </div>
+        ${copy.requiresBank && shouldChooseBank ? `
+          <div class="field">
+            <label for="authBankAccount">Bank account</label>
+            <select id="authBankAccount" class="select">
+              <option value="">Choose a bank account</option>
+              ${getBankAccounts().map((account) => `
+                <option value="${account.id}" ${getDefaultAuthBankId() === account.id ? "selected" : ""}>
+                  ${formatAccountLabel(account)}
+                </option>
+              `).join("")}
+            </select>
+          </div>
+        ` : ""}
         <div class="field">
           <label for="authUpiPin">UPI PIN</label>
           <input id="authUpiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="Enter 4-digit PIN">
@@ -189,11 +307,11 @@ function bottomNav() {
     { id: "profile", label: "Profile", icon: icons.profile },
   ];
 
-  const rootScreen = ["history", "scan", "amountEntry", "paymentConfirm", "paymentSuccess"].includes(appState.currentScreen)
+  const rootScreen = ["scan", "amountEntry", "paymentConfirm", "paymentSuccess", "history"].includes(appState.currentScreen)
     ? "payments"
     : ["utilityForm", "utilitySuccess"].includes(appState.currentScreen)
       ? "bills"
-      : ["settings", "security", "rewards"].includes(appState.currentScreen)
+      : ["settings", "security", "rewards", "bankAccounts"].includes(appState.currentScreen)
         ? "profile"
         : appState.currentScreen;
 
@@ -246,6 +364,8 @@ function getScreenMarkup() {
   switch (appState.currentScreen) {
     case "splash":
       return renderSplash();
+    case "login":
+      return renderLogin();
     case "mobile":
       return renderMobileInput();
     case "otp":
@@ -282,8 +402,10 @@ function getScreenMarkup() {
       return renderSettings();
     case "security":
       return renderSecurity();
+    case "bankAccounts":
+      return renderBankAccounts();
     default:
-      return renderHome();
+      return renderSplash();
   }
 }
 
@@ -291,47 +413,80 @@ function renderSplash() {
   return `
     <section class="screen">
       <div class="brand-block">
-        <div class="logo-mark">S</div>
+        <div class="logo-mark"><img class="brand-logo" src="${brandAssets.logo}" alt="Smart Pay"></div>
         <p class="hero-chip">Unified Payments</p>
-        <h1 class="brand-title">SmartPay</h1>
-        <p class="brand-tagline">Fast, secure, and beautifully simple money movement for everyday payments.</p>
+        <p class="brand-tagline">Secure app login first, then bank accounts, then payments.</p>
         <div class="hero-panel stack">
           <div>
-            <h2 style="margin:0 0 8px; font-size:1.2rem;">Everything in one payment app</h2>
-            <p class="muted" style="margin:0;">Scan merchants, pay contacts, settle bills, and track rewards with a single wallet experience.</p>
+            <h2 style="margin:0 0 8px; font-size:1.2rem;">Choose how to enter SmartPay</h2>
+            <p class="muted" style="margin:0;">Sign up to create the app account and add your first bank, or log in with OTP or biometric access.</p>
           </div>
-          <button class="cta" data-action="start-onboarding">Get Started</button>
-          <button class="secondary-btn" data-action="biometric-login">${icons.face} Use biometric preview</button>
+          <button class="cta" data-action="go-login">Log In</button>
+          <button class="secondary-btn" data-action="go-signup">Sign Up</button>
         </div>
       </div>
     </section>
   `;
 }
 
-function renderMobileInput() {
+function renderLogin() {
   return layout({
-    title: "Register your number",
-    subtitle: "We will send a one-time password to verify your SmartPay account.",
+    title: "Log in to SmartPay",
+    subtitle: "Use your mobile number with OTP or continue with biometric login.",
+    showBack: true,
     nav: false,
     content: `
       <div class="stack">
+        <div class="auth-brand">
+          <img src="${brandAssets.logo}" alt="Smart Pay">
+        </div>
+        <div class="form-card stack">
+          <div class="field">
+            <label for="loginMobileNumber">Mobile number</label>
+            <input id="loginMobileNumber" class="input" type="tel" inputmode="numeric" placeholder="+255 7XX XXX XXX" value="${appState.pendingAuthPhone}">
+          </div>
+          <p class="muted" style="margin:0;">Use any demo mobile number and OTP 123456.</p>
+        </div>
+        <button class="cta" data-action="submit-login-mobile">Send OTP</button>
+        <button class="secondary-btn" data-action="biometric-login">${icons.face} Continue with biometric login</button>
+      </div>
+    `,
+  });
+}
+
+function renderMobileInput() {
+  return layout({
+    title: "Create your account",
+    subtitle: "Sign up for the SmartPay app with your mobile number.",
+    showBack: true,
+    nav: false,
+    content: `
+      <div class="stack">
+        <div class="auth-brand">
+          <img src="${brandAssets.logo}" alt="Smart Pay">
+        </div>
         <div class="form-card stack">
           <div class="field">
             <label for="mobileNumber">Mobile number</label>
             <input id="mobileNumber" class="input" type="tel" inputmode="numeric" placeholder="+255 7XX XXX XXX" value="${appState.user.phone}">
           </div>
-          <p class="muted" style="margin:0;">Use any dummy Tanzanian mobile number for this prototype.</p>
+          <p class="muted" style="margin:0;">This sign-up creates the app account before your bank account is added.</p>
         </div>
-        <button class="cta" data-action="submit-mobile">Send OTP</button>
+        <button class="cta" data-action="submit-signup-mobile">Send OTP</button>
       </div>
     `,
   });
 }
 
 function renderOtp() {
+  const phone = appState.authMode === "login" ? appState.pendingAuthPhone : appState.user.phone;
+  const subtitle = appState.authMode === "login"
+    ? `A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to log in.`
+    : `A simulated OTP has been sent to ${phone || "+255 700 000 000"}. Use 123456 to continue sign-up.`;
+
   return layout({
     title: "Verify OTP",
-    subtitle: `A simulated OTP has been sent to ${appState.user.phone || "+255 700 000 000"}. Use 123456 to continue.`,
+    subtitle,
     showBack: true,
     nav: false,
     content: `
@@ -350,38 +505,56 @@ function renderOtp() {
 }
 
 function renderBankLink() {
+  const isSignupBank = appState.bankLinkMode !== "add";
+  const title = isSignupBank ? "Add your first bank" : "Add another bank";
+  const subtitle = isSignupBank
+    ? "Every SmartPay account starts with at least one linked bank account."
+    : "Link an additional bank account for payments and balance checks.";
+
   return layout({
-    title: "Link your bank",
-    subtitle: "Connect an account and set a UPI PIN to enable payments.",
+    title,
+    subtitle,
     showBack: true,
     nav: false,
     content: `
       <div class="stack">
+        <div class="auth-brand">
+          <img src="${brandAssets.logo}" alt="Smart Pay">
+        </div>
         <div class="form-card stack">
           <div class="field">
             <label for="bankSelect">Select bank</label>
             <select id="bankSelect" class="select">
               <option value="">Choose a bank</option>
-              ${appState.banks.map((bank) => `<option value="${bank}" ${appState.user.bank === bank ? "selected" : ""}>${bank}</option>`).join("")}
+              ${appState.banks.map((bank) => `<option value="${bank}">${bank}</option>`).join("")}
             </select>
           </div>
           <div class="field">
             <label for="accountNumber">Account number</label>
-            <input id="accountNumber" class="input" type="text" inputmode="numeric" placeholder="Enter 8-12 digits" value="${appState.user.accountNumber}">
+            <input id="accountNumber" class="input" type="text" inputmode="numeric" placeholder="Enter 8-12 digits">
           </div>
-          <div class="field">
-            <label for="upiPin">Set UPI PIN</label>
-            <input id="upiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN">
-          </div>
-          <p class="muted" style="margin:0;">This is a mock setup flow with frontend-only validation.</p>
+          ${isSignupBank ? `
+            <div class="field">
+              <label for="upiPin">Set UPI PIN</label>
+              <input id="upiPin" class="input" type="password" inputmode="numeric" maxlength="4" placeholder="4-digit PIN">
+            </div>
+          ` : ""}
+          <p class="muted" style="margin:0;">This is a mock bank-linking flow with frontend-only validation.</p>
         </div>
-        <button class="cta" data-action="link-bank">Finish Setup</button>
+        <button class="cta" data-action="link-bank">${isSignupBank ? "Finish setup" : "Add bank account"}</button>
       </div>
     `,
   });
 }
 
 function renderHome() {
+  const selectedBalanceBank = getSelectedBalanceBank();
+  const bankSummary = getBankAccounts().length > 1
+    ? `${getBankAccounts().length} linked bank accounts`
+    : getPrimaryBankAccount()
+      ? formatAccountLabel(getPrimaryBankAccount())
+      : "No bank linked";
+
   return layout({
     title: "",
     subtitle: "",
@@ -389,7 +562,7 @@ function renderHome() {
     content: `
       <div class="topbar">
         <div class="profile-block">
-          <div class="avatar">${appState.user.name.slice(0, 1)}</div>
+          <div class="avatar"><img src="${brandAssets.icon}" alt="Smart Pay icon"></div>
           <div>
             <div class="muted" style="font-size:0.8rem;">Hello</div>
             <h1 class="screen-title" style="margin-top:2px;">${appState.user.name}</h1>
@@ -399,16 +572,16 @@ function renderHome() {
       </div>
 
       <section class="balance-card">
-        <div class="balance-label">Total balance</div>
+        <div class="balance-label">${appState.balanceVisible && selectedBalanceBank ? selectedBalanceBank.bankName : "Check a bank balance"}</div>
         <div class="balance-row">
-          <div class="balance-value">${appState.balanceVisible ? currency(appState.user.balance) : "TZS ••••••"}</div>
+          <div class="balance-value">${appState.balanceVisible && selectedBalanceBank ? currency(selectedBalanceBank.balance) : maskBalance()}</div>
           <button class="balance-toggle" data-action="${appState.balanceVisible ? "hide-balance" : "request-balance-visibility"}">
             ${appState.balanceVisible ? "Hide" : "Show"}
           </button>
         </div>
         <div class="balance-meta">
-          <span>${appState.user.bank || "Primary bank"} linked</span>
-          <span>UPI ready</span>
+          <span>${appState.balanceVisible && selectedBalanceBank ? formatAccountLabel(selectedBalanceBank) : bankSummary}</span>
+          <span>Total ${currency(getTotalBalance())}</span>
         </div>
       </section>
 
@@ -570,7 +743,7 @@ function renderPaymentConfirm() {
           </div>
           <div class="row space-between">
             <span class="muted">From</span>
-            <strong>${appState.user.bank || "SmartPay Wallet"}</strong>
+            <strong>${appState.paymentBankAccountId ? formatAccountLabel(getSelectedPaymentBank()) : "Choose bank during payment"}</strong>
           </div>
         </div>
         <button class="cta" data-action="make-payment">Pay now</button>
@@ -581,6 +754,7 @@ function renderPaymentConfirm() {
 
 function renderPaymentSuccess() {
   const merchant = appState.selectedMerchant || appState.merchants[0];
+  const bankAccount = getSelectedPaymentBank();
   return layout({
     title: "Payment complete",
     subtitle: "Your transaction has been processed successfully.",
@@ -593,6 +767,7 @@ function renderPaymentSuccess() {
         <div>
           <h2 style="margin:0;">Paid ${currency(Number(appState.pendingAmount || 0))}</h2>
           <p class="muted" style="margin:8px 0 0;">Sent to ${merchant.name}</p>
+          <p class="muted" style="margin:8px 0 0;">Paid from ${bankAccount ? formatAccountLabel(bankAccount) : "your selected bank"}</p>
         </div>
         <div class="tag" style="margin:0 auto;">Reference: SP${Date.now().toString().slice(-6)}</div>
         <button class="cta" data-nav="home">Back to home</button>
@@ -652,6 +827,7 @@ function renderUtilityForm() {
 
 function renderUtilitySuccess() {
   const category = appState.billCategories.find((item) => item.id === appState.selectedBillCategory) || appState.billCategories[0];
+  const bankAccount = getSelectedPaymentBank();
   return layout({
     title: "Bill paid",
     subtitle: `${category.label} payment completed successfully.`,
@@ -664,6 +840,7 @@ function renderUtilitySuccess() {
         <div>
           <h2 style="margin:0;">${currency(appState.fetchedBill?.amount || 0)} paid</h2>
           <p class="muted" style="margin:8px 0 0;">${category.label} bill settled for ${appState.fetchedBill?.reference || "your account"}.</p>
+          <p class="muted" style="margin:8px 0 0;">Paid from ${bankAccount ? formatAccountLabel(bankAccount) : "your selected bank"}</p>
         </div>
         <button class="cta" data-nav="bills">Pay another bill</button>
       </div>
@@ -741,7 +918,7 @@ function renderProfile() {
       <div class="stack">
         <div class="form-card">
           <div class="profile-block">
-            <div class="avatar" style="width:58px; height:58px;">${appState.user.name.slice(0, 1)}</div>
+            <div class="avatar" style="width:58px; height:58px;"><img src="${brandAssets.icon}" alt="Smart Pay icon"></div>
             <div>
               <h2 style="margin:0;">${appState.user.name}</h2>
               <p class="muted" style="margin:6px 0 0;">${appState.user.phone || "+255 700 000 000"}</p>
@@ -757,7 +934,7 @@ function renderProfile() {
             <div class="row">
               <div class="icon-wrap">${icons.profile}</div>
               <div class="list-copy">
-                <h3>Profile & preferences</h3>
+                <h3>Profile and preferences</h3>
                 <p>Manage your account details</p>
               </div>
             </div>
@@ -767,7 +944,7 @@ function renderProfile() {
             <div class="row">
               <div class="icon-wrap">${icons.wallet}</div>
               <div class="list-copy">
-                <h3>Rewards & cashback</h3>
+                <h3>Rewards and cashback</h3>
                 <p>See offers and loyalty value</p>
               </div>
             </div>
@@ -780,6 +957,7 @@ function renderProfile() {
 }
 
 function renderSettings() {
+  const primaryBank = getPrimaryBankAccount();
   return layout({
     title: "Settings",
     subtitle: "Profile, bank accounts, and security controls.",
@@ -791,21 +969,21 @@ function renderSettings() {
             <div class="icon-wrap">${icons.profile}</div>
             <div class="list-copy">
               <h3>Profile</h3>
-              <p>${appState.user.name} • ${appState.user.phone || "Not added"}</p>
+              <p>${appState.user.name} - ${appState.user.phone || "Not added"}</p>
             </div>
           </div>
           <span class="muted">Editable</span>
         </article>
-        <article class="list-item">
+        <button class="list-item" data-nav="bankAccounts">
           <div class="row">
             <div class="icon-wrap">${icons.bank}</div>
             <div class="list-copy">
               <h3>Bank accounts</h3>
-              <p>${appState.user.bank || "No bank linked"}</p>
+              <p>${getBankAccounts().length === 1 ? `${primaryBank?.bankName || "1"} linked account` : `${getBankAccounts().length} linked accounts${primaryBank ? ` - ${primaryBank.bankName} primary` : ""}`}</p>
             </div>
           </div>
-          <span class="muted">Primary</span>
-        </article>
+          <span class="muted">Manage</span>
+        </button>
         <button class="list-item" data-nav="security">
           <div class="row">
             <div class="icon-wrap">${icons.shield}</div>
@@ -826,6 +1004,31 @@ function renderSettings() {
           </div>
           <span class="pill-toggle ${appState.darkMode ? "active" : ""}"></span>
         </button>
+      </div>
+    `,
+  });
+}
+
+function renderBankAccounts() {
+  return layout({
+    title: "Bank accounts",
+    subtitle: "Add more banks and use them during balance checks or payments.",
+    showBack: true,
+    content: `
+      <div class="stack">
+        <div class="list">
+          ${getBankAccounts().map((account) => `
+            <article class="list-item">
+              <div class="icon-wrap">${icons.bank}</div>
+              <div class="list-copy">
+                <h3>${account.bankName}</h3>
+                <p>${formatAccountLabel(account)}${account.isPrimary ? " - Primary" : ""}</p>
+              </div>
+              <div class="amount">${currency(account.balance)}</div>
+            </article>
+          `).join("")}
+        </div>
+        <button class="cta" data-action="start-add-bank">Add another bank</button>
       </div>
     `,
   });
@@ -876,12 +1079,16 @@ function bindEvents() {
   });
 
   document.querySelectorAll("[data-nav]").forEach((element) => {
-    element.addEventListener("click", () => setScreen(element.dataset.nav));
+    element.addEventListener("click", () => {
+      resetSensitiveViews();
+      setScreen(element.dataset.nav);
+    });
   });
 
   document.querySelectorAll("[data-merchant]").forEach((element) => {
     element.addEventListener("click", () => {
       appState.selectedMerchant = appState.merchants.find((merchant) => merchant.id === element.dataset.merchant) || appState.merchants[0];
+      appState.pendingAmount = "";
       setScreen("amountEntry");
     });
   });
@@ -899,14 +1106,21 @@ function handleAction(event) {
   const action = event.currentTarget.dataset.action;
 
   switch (action) {
-    case "start-onboarding":
-      setScreen("mobile");
+    case "go-login":
+      appState.authMode = "login";
+      setScreen("login");
+      break;
+    case "go-signup":
+      startSignupFlow();
+      break;
+    case "submit-login-mobile":
+      submitLoginMobile();
+      break;
+    case "submit-signup-mobile":
+      submitSignupMobile();
       break;
     case "biometric-login":
-      setScreen("home");
-      break;
-    case "submit-mobile":
-      submitMobile();
+      biometricLogin();
       break;
     case "submit-otp":
       submitOtp();
@@ -914,15 +1128,21 @@ function handleAction(event) {
     case "link-bank":
       submitBankLink();
       break;
+    case "start-add-bank":
+      appState.bankLinkMode = "add";
+      setScreen("bankLink");
+      break;
     case "back":
       goBack();
       break;
     case "simulate-scan":
       appState.selectedMerchant = appState.merchants[Math.floor(Math.random() * appState.merchants.length)];
+      appState.pendingAmount = "";
       setScreen("amountEntry");
       break;
     case "fake-qr":
       appState.selectedMerchant = appState.merchants[1];
+      appState.pendingAmount = "";
       setScreen("amountEntry");
       break;
     case "confirm-amount":
@@ -939,10 +1159,12 @@ function handleAction(event) {
       break;
     case "contact-payment":
       appState.selectedMerchant = { id: "contact", name: "Amina Yusuf", upiId: "amina@smartpay" };
+      appState.pendingAmount = "";
       setScreen("amountEntry");
       break;
     case "bank-transfer":
       appState.selectedMerchant = { id: "banktransfer", name: "Bank Transfer", upiId: "transfer@smartpay" };
+      appState.pendingAmount = "";
       setScreen("amountEntry");
       break;
     case "toggle-dark":
@@ -965,6 +1187,7 @@ function handleAction(event) {
       break;
     case "hide-balance":
       appState.balanceVisible = false;
+      appState.visibleBankAccountId = null;
       renderApp();
       break;
     case "submit-auth":
@@ -980,12 +1203,26 @@ function handleAction(event) {
 }
 
 function openAuthModal(type) {
-  appState.authRequest = { type };
+  if (!getBankAccounts().length) {
+    window.alert("Please add a bank account first.");
+    return;
+  }
+
+  appState.authRequest = {
+    type,
+    bankAccountId: getSelectedPaymentBank()?.id || getPrimaryBankAccount()?.id || "",
+  };
   renderApp();
 }
 
 function submitAuth() {
   const pin = document.getElementById("authUpiPin")?.value.trim() || "";
+  const bankAccountId = document.getElementById("authBankAccount")?.value || getDefaultAuthBankId();
+
+  if (!bankAccountId) {
+    window.alert("Please choose a bank account.");
+    return;
+  }
   if (pin !== appState.user.upiPin) {
     window.alert("Incorrect UPI PIN.");
     return;
@@ -995,10 +1232,13 @@ function submitAuth() {
   appState.authRequest = null;
 
   if (authType === "balance") {
+    appState.visibleBankAccountId = bankAccountId;
     appState.balanceVisible = true;
     renderApp();
     return;
   }
+
+  appState.paymentBankAccountId = bankAccountId;
 
   if (authType === "payment") {
     finalizePayment();
@@ -1010,16 +1250,40 @@ function submitAuth() {
   }
 }
 
-function submitMobile() {
-  const input = document.getElementById("mobileNumber");
-  const digits = (input?.value || "").replace(/\D/g, "");
-  if (digits.length < 10) {
+function validatePhone(value) {
+  return value.replace(/\D/g, "").length >= 10;
+}
+
+function submitLoginMobile() {
+  const input = document.getElementById("loginMobileNumber");
+  const phone = input?.value.trim() || "";
+  if (!validatePhone(phone)) {
     window.alert("Please enter a valid mobile number.");
     return;
   }
 
-  appState.user.phone = input.value.trim();
+  appState.authMode = "login";
+  appState.pendingAuthPhone = phone;
   setScreen("otp");
+}
+
+function submitSignupMobile() {
+  const input = document.getElementById("mobileNumber");
+  const phone = input?.value.trim() || "";
+  if (!validatePhone(phone)) {
+    window.alert("Please enter a valid mobile number.");
+    return;
+  }
+
+  appState.authMode = "signup";
+  appState.user.phone = phone;
+  appState.pendingAuthPhone = phone;
+  setScreen("otp");
+}
+
+function biometricLogin() {
+  loadDemoUser(appState.pendingAuthPhone);
+  setScreen("home");
 }
 
 function submitOtp() {
@@ -1028,6 +1292,14 @@ function submitOtp() {
     window.alert("Use the demo OTP: 123456");
     return;
   }
+
+  if (appState.authMode === "login") {
+    loadDemoUser(appState.pendingAuthPhone);
+    setScreen("home");
+    return;
+  }
+
+  appState.bankLinkMode = "signup";
   setScreen("bankLink");
 }
 
@@ -1035,6 +1307,8 @@ function submitBankLink() {
   const bank = document.getElementById("bankSelect")?.value || "";
   const accountNumber = document.getElementById("accountNumber")?.value.trim() || "";
   const upiPin = document.getElementById("upiPin")?.value.trim() || "";
+  const isSignupBank = appState.bankLinkMode !== "add";
+
   if (!bank) {
     window.alert("Please select a bank.");
     return;
@@ -1043,15 +1317,28 @@ function submitBankLink() {
     window.alert("Enter a valid 8 to 12 digit account number.");
     return;
   }
-  if (!/^\d{4}$/.test(upiPin)) {
+  if (isSignupBank && !/^\d{4}$/.test(upiPin)) {
     window.alert("Set a 4-digit UPI PIN.");
     return;
   }
 
-  appState.user.bank = bank;
-  appState.user.accountNumber = accountNumber;
-  appState.user.upiPin = upiPin;
-  setScreen("home");
+  if (isSignupBank) {
+    appState.user.upiPin = upiPin;
+  }
+
+  const balance = Math.floor(Math.random() * 90000) + 10000;
+  const newAccount = createBankAccount(bank, accountNumber, balance);
+  appState.user.bankAccounts.push(newAccount);
+  appState.visibleBankAccountId = newAccount.id;
+  appState.paymentBankAccountId = newAccount.id;
+  appState.balanceVisible = false;
+
+  if (isSignupBank) {
+    setScreen("home");
+    return;
+  }
+
+  setScreen("bankAccounts");
 }
 
 function confirmAmount() {
@@ -1061,6 +1348,7 @@ function confirmAmount() {
     return;
   }
   appState.pendingAmount = amount;
+  appState.paymentBankAccountId = null;
   setScreen("paymentConfirm");
 }
 
@@ -1076,16 +1364,26 @@ function makePayment() {
 
 function finalizePayment() {
   const amount = Number(appState.pendingAmount || 0);
+  const bankAccount = getSelectedPaymentBank();
+
   if (amount <= 0) {
     window.alert("Payment amount is invalid.");
     return;
   }
+  if (!bankAccount) {
+    window.alert("Please choose a bank account.");
+    return;
+  }
+  if (bankAccount.balance < amount) {
+    window.alert("Insufficient funds in the selected bank account.");
+    return;
+  }
 
-  appState.user.balance -= amount;
+  bankAccount.balance -= amount;
   appState.transactions.unshift({
     id: Date.now(),
     title: appState.selectedMerchant?.name || "New Payment",
-    subtitle: "Just now",
+    subtitle: `Just now - ${bankAccount.bankName}`,
     amount: -amount,
     type: "debit",
     icon: appState.selectedMerchant?.id === "contact" ? "contact" : "shop",
@@ -1115,20 +1413,30 @@ function payBill() {
     return;
   }
 
+  appState.paymentBankAccountId = null;
   openAuthModal("bill");
 }
 
 function finalizeBillPayment() {
+  const bankAccount = getSelectedPaymentBank();
   if (!appState.fetchedBill) {
     window.alert("Fetch a bill first.");
     return;
   }
+  if (!bankAccount) {
+    window.alert("Please choose a bank account.");
+    return;
+  }
+  if (bankAccount.balance < appState.fetchedBill.amount) {
+    window.alert("Insufficient funds in the selected bank account.");
+    return;
+  }
 
-  appState.user.balance -= appState.fetchedBill.amount;
+  bankAccount.balance -= appState.fetchedBill.amount;
   appState.transactions.unshift({
     id: Date.now(),
     title: `${(appState.billCategories.find((item) => item.id === appState.selectedBillCategory) || {}).label || "Bill"} Payment`,
-    subtitle: "Just now",
+    subtitle: `Just now - ${bankAccount.bankName}`,
     amount: -appState.fetchedBill.amount,
     type: "debit",
     icon: "bill",
