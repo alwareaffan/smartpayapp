@@ -365,6 +365,7 @@ function bottomNav() {
   const tabs = [
     { id: "home", label: tr("Home", "Nyumbani"), icon: icons.home },
     { id: "payments", label: tr("Payments", "Malipo"), icon: icons.wallet },
+    { id: "notifications", label: tr("Alerts", "Arifa"), icon: icons.bell },
     { id: "bills", label: tr("Bills", "Bili"), icon: icons.bill },
     { id: "profile", label: tr("Profile", "Wasifu"), icon: icons.profile },
   ];
@@ -373,6 +374,8 @@ function bottomNav() {
     ? "payments"
     : ["utilityForm", "utilitySuccess"].includes(appState.currentScreen)
       ? "bills"
+      : appState.currentScreen === "notifications"
+        ? "notifications"
       : ["settings", "security", "rewards", "bankAccounts"].includes(appState.currentScreen)
         ? "profile"
         : appState.currentScreen;
@@ -631,7 +634,6 @@ function renderHome() {
   return layout({
     title: "",
     subtitle: "",
-    headerAction: `<button class="icon-btn" data-nav="notifications" aria-label="Notifications">${icons.bell}</button>`,
     content: `
       <div class="topbar">
         <div class="profile-block">
@@ -641,7 +643,7 @@ function renderHome() {
             <h1 class="screen-title" style="margin-top:2px;">${appState.user.name}</h1>
           </div>
         </div>
-        <div class="tag">${icons.shield} ${tr("Secure mode", "Hali salama")}</div>
+        <button class="icon-btn cashback-mini-btn" data-nav="rewards" aria-label="${tr("Cashback", "Cashback")}">${icons.wallet}</button>
       </div>
 
       <section class="balance-card">
