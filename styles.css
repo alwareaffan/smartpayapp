@@ -668,7 +668,7 @@ button {
   right: 14px;
   bottom: 14px;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   padding: 10px;
   border-radius: 22px;
@@ -761,6 +761,13 @@ button {
   color: #fff;
 }
 
+.home-reward-card {
+  width: 100%;
+  margin-top: 14px;
+  text-align: left;
+  border-radius: 24px;
+}
+
 .home-cashback-card {
   width: 100%;
   text-align: left;
@@ -773,14 +780,108 @@ button {
   color: #fff;
 }
 
-.cashback-mini-btn {
-  color: var(--primary);
-}
-
 .reward-points {
   font-size: 2rem;
   font-weight: 800;
   margin: 12px 0 6px;
+}
+
+.pay-again-list .list-item {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.pay-again-list .list-copy {
+  text-align: left;
+  min-width: 0;
+}
+
+.pay-again-list .tag {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.transaction-amount-block {
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  text-align: right;
+}
+
+.cashback-earned {
+  color: var(--success);
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ad-slider {
+  margin-top: 20px;
+}
+
+.ad-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.ad-track::-webkit-scrollbar {
+  display: none;
+}
+
+.ad-slide {
+  min-width: 100%;
+  padding: 18px;
+  border-radius: 24px;
+  color: #fff;
+  scroll-snap-align: start;
+  background:
+    radial-gradient(circle at right top, rgba(255, 202, 27, 0.42), transparent 36%),
+    linear-gradient(135deg, var(--primary-strong), var(--primary));
+  box-shadow: 0 16px 32px rgba(217, 79, 18, 0.2);
+}
+
+.ad-slide span {
+  display: inline-flex;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ad-slide h3 {
+  margin: 14px 0 6px;
+  font-size: 1.08rem;
+}
+
+.ad-slide p {
+  margin: 0;
+  max-width: 260px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.88rem;
+}
+
+.ad-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ad-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(242, 101, 34, 0.24);
+}
+
+.ad-dots .active {
+  width: 18px;
+  background: var(--primary);
 }
 
 .notification-dot {

@@ -380,7 +380,6 @@ function bottomNav() {
   const tabs = [
     { id: "home", label: tr("Home", "Nyumbani"), icon: icons.home },
     { id: "payments", label: tr("Payments", "Malipo"), icon: icons.wallet },
-    { id: "notifications", label: tr("Alerts", "Arifa"), icon: icons.bell },
     { id: "bills", label: tr("Bills", "Bili"), icon: icons.bill },
     { id: "profile", label: tr("Profile", "Wasifu"), icon: icons.profile },
   ];
@@ -389,9 +388,7 @@ function bottomNav() {
     ? "payments"
     : ["utilityForm", "utilitySuccess"].includes(appState.currentScreen)
       ? "bills"
-      : appState.currentScreen === "notifications"
-        ? "notifications"
-      : ["settings", "security", "rewards", "bankAccounts"].includes(appState.currentScreen)
+      : ["settings", "security", "rewards", "bankAccounts", "notifications"].includes(appState.currentScreen)
         ? "profile"
         : appState.currentScreen;
 
@@ -407,7 +404,13 @@ function bottomNav() {
   `;
 }
 
-function renderTransactions(limit = appState.transactions.length) {
+function calculateCashback(amount) {
+  return Math.abs(amount) * 0.008;
+}
+
+function renderTransactions(limit = appState.transactions.length, options = {}) {
+  const showCashback = Boolean(options.showCashback);
+
   return `
     <div class="list">
       ${appState.transactions.slice(0, limit).map((item) => `
@@ -417,12 +420,69 @@ function renderTransactions(limit = appState.transactions.length) {
             <h3>${item.title}</h3>
             <p>${item.subtitle}</p>
           </div>
-          <div class="amount ${item.type}">
-            ${item.type === "credit" ? "+" : "-"} ${currency(Math.abs(item.amount))}
+          <div class="transaction-amount-block">
+            <div class="amount ${item.type}">
+              ${item.type === "credit" ? "+" : "-"} ${currency(Math.abs(item.amount))}
+            </div>
+            ${showCashback && item.type === "debit" ? `<small class="cashback-earned">${tr("Cashback", "Cashback")}: ${currency(calculateCashback(item.amount))}</small>` : ""}
           </div>
         </button>
       `).join("")}
     </div>
+  `;
+}
+
+function renderPayAgainMerchants(limit = appState.merchants.length) {
+  return `
+    <div class="list pay-again-list">
+      ${appState.merchants.slice(0, limit).map((merchant) => `
+        <button class="list-item" data-merchant="${merchant.id}">
+          <div class="icon-wrap">${icons.shop}</div>
+          <div class="list-copy">
+            <h3>${merchant.name}</h3>
+            <p>${merchant.upiId}</p>
+          </div>
+          <div class="tag">${tr("Pay", "Lipa")}</div>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderAdSlider() {
+  const ads = [
+    {
+      title: tr("Recharge and save", "Ongeza salio na okoa"),
+      body: tr("Get instant mobile top-ups with SmartPay rewards.", "Pata salio la simu papo hapo pamoja na zawadi za SmartPay."),
+      tag: tr("Limited offer", "Ofa maalum"),
+    },
+    {
+      title: tr("Pay bills on time", "Lipa bili kwa wakati"),
+      body: tr("Electricity, water, and DTH payments in one secure app.", "Malipo ya umeme, maji, na DTH kwenye programu moja salama."),
+      tag: tr("Everyday payments", "Malipo ya kila siku"),
+    },
+    {
+      title: tr("Scan. Pay. Done.", "Changanua. Lipa. Imekamilika."),
+      body: tr("Use QR payments at your favorite SmartPay merchants.", "Tumia malipo ya QR kwa wafanyabiashara unaowapenda."),
+      tag: tr("SmartPay QR", "SmartPay QR"),
+    },
+  ];
+
+  return `
+    <section class="ad-slider" aria-label="${tr("Promotions", "Matangazo")}">
+      <div class="ad-track">
+        ${ads.map((ad) => `
+          <article class="ad-slide">
+            <span>${ad.tag}</span>
+            <h3>${ad.title}</h3>
+            <p>${ad.body}</p>
+          </article>
+        `).join("")}
+      </div>
+      <div class="ad-dots" aria-hidden="true">
+        ${ads.map((_, index) => `<span class="${index === 0 ? "active" : ""}"></span>`).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -659,7 +719,7 @@ function renderHome() {
             <h1 class="screen-title" style="margin-top:2px;">${appState.user.name}</h1>
           </div>
         </div>
-        <button class="icon-btn cashback-mini-btn" data-nav="rewards" aria-label="${tr("Cashback", "Cashback")}">${icons.wallet}</button>
+        <button class="icon-btn" data-nav="notifications" aria-label="${tr("Notifications", "Arifa")}">${icons.bell}</button>
       </div>
 
       <section class="balance-card">
@@ -675,6 +735,17 @@ function renderHome() {
           <span>${tr("Total", "Jumla")} ${currency(getTotalBalance())}</span>
         </div>
       </section>
+
+      <button class="reward-card home-reward-card" data-nav="rewards">
+        <div class="row space-between">
+          <div>
+            <div class="hero-chip" style="background:rgba(255,255,255,0.16); color:#fff;">${tr("Rewards wallet", "Mkoba wa zawadi")}</div>
+            <div class="reward-points">TZS 6,500</div>
+            <p style="margin:0; opacity:0.82;">${tr("Cashback ready for eligible payments.", "Cashback ipo tayari kwa malipo yanayostahili.")}</p>
+          </div>
+          <div class="home-cashback-icon icon-wrap">${icons.wallet}</div>
+        </div>
+      </button>
 
       <div class="section-head">
         <h2>${tr("Quick actions", "Vitendo vya haraka")}</h2>
@@ -703,11 +774,18 @@ function renderHome() {
         </button>
       </div>
 
+      ${renderAdSlider()}
+
+      <div class="section-head">
+        <h2>${tr("Pay Again", "Lipa Tena")}</h2>
+      </div>
+      ${renderPayAgainMerchants(3)}
+
       <div class="section-head">
         <h2>${tr("Recent transactions", "Miamala ya karibuni")}</h2>
         <button class="muted" data-nav="history">${tr("View all", "Tazama yote")}</button>
       </div>
-      ${renderTransactions(4)}
+      ${renderTransactions(4, { showCashback: true })}
     `,
   });
 }
@@ -740,20 +818,9 @@ function renderPayments() {
         </button>
       </div>
       <div class="section-head">
-        <h2>${tr("Suggested merchants", "Wafanyabiashara waliopendekezwa")}</h2>
+        <h2>${tr("Pay Again", "Lipa Tena")}</h2>
       </div>
-      <div class="list">
-        ${appState.merchants.map((merchant) => `
-          <button class="list-item" data-merchant="${merchant.id}">
-            <div class="icon-wrap">${icons.shop}</div>
-            <div class="list-copy">
-              <h3>${merchant.name}</h3>
-              <p>${merchant.upiId}</p>
-            </div>
-            <div class="tag">Pay</div>
-          </button>
-        `).join("")}
-      </div>
+      ${renderPayAgainMerchants()}
     `,
   });
 }
@@ -987,7 +1054,7 @@ function renderHistory() {
     title: "Transaction history",
     subtitle: "All recent activity across SmartPay.",
     showBack: true,
-    content: renderTransactions(),
+    content: renderTransactions(appState.transactions.length, { showCashback: true }),
   });
 }
 
