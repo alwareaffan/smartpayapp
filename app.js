@@ -99,6 +99,9 @@ const brandAssets = {
   icon: "assets/brand-icon.png",
 };
 
+const activityLogKey = "smartpay_activity_logs";
+const activityLogLimit = 500;
+
 function currency(amount) {
   return new Intl.NumberFormat("en-TZ", {
     style: "currency",
@@ -116,6 +119,54 @@ function renderLanguageButton(variant = "icon-btn") {
   const label = appState.language === "en" ? "Switch to Swahili" : "Badilisha hadi Kiingereza";
   return `<button class="${variant} lang-btn" data-action="toggle-language" aria-label="${label}">${next}</button>`;
 }
+
+function getBrowserLabel() {
+  const userAgent = navigator.userAgent || "Unknown browser";
+
+  if (userAgent.includes("Edg/")) return "Microsoft Edge";
+  if (userAgent.includes("Chrome/")) return "Google Chrome";
+  if (userAgent.includes("Firefox/")) return "Mozilla Firefox";
+  if (userAgent.includes("Safari/") && !userAgent.includes("Chrome/")) return "Safari";
+
+  return userAgent;
+}
+
+function getPrototypeIpAddress() {
+  return "Unavailable in static prototype";
+}
+
+function readActivityLogs() {
+  try {
+    return JSON.parse(localStorage.getItem(activityLogKey) || "[]");
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeActivityLogs(logs) {
+  try {
+    localStorage.setItem(activityLogKey, JSON.stringify(logs.slice(-activityLogLimit)));
+  } catch (error) {
+    console.warn("SmartPay activity log could not be saved.", error);
+  }
+}
+
+function logActivity(action, details = {}) {
+  const logs = readActivityLogs();
+  logs.push({
+    timestamp: new Date().toISOString(),
+    ipAddress: getPrototypeIpAddress(),
+    browser: getBrowserLabel(),
+    action,
+    details,
+  });
+  writeActivityLogs(logs);
+}
+
+window.SmartPayLogs = {
+  export: readActivityLogs,
+  clear: () => writeActivityLogs([]),
+};
 
 function renderBottomTagline(nav = true) {
   return `
@@ -212,6 +263,7 @@ function startSignupFlow() {
 function setScreen(screen, options = {}) {
   appState.currentScreen = screen;
   Object.assign(appState, options);
+  logActivity("screen_view", { screen });
   renderApp();
 }
 
@@ -452,19 +504,16 @@ function renderPayAgainMerchants(limit = appState.merchants.length) {
 function renderAdSlider() {
   const ads = [
     {
-      title: tr("Recharge and save", "Ongeza salio na okoa"),
-      body: tr("Get instant mobile top-ups with SmartPay rewards.", "Pata salio la simu papo hapo pamoja na zawadi za SmartPay."),
-      tag: tr("Limited offer", "Ofa maalum"),
+      label: tr("Mobile recharge promotion", "Tangazo la kuongeza salio la simu"),
+      image: "assets/ad-recharge.svg",
     },
     {
-      title: tr("Pay bills on time", "Lipa bili kwa wakati"),
-      body: tr("Electricity, water, and DTH payments in one secure app.", "Malipo ya umeme, maji, na DTH kwenye programu moja salama."),
-      tag: tr("Everyday payments", "Malipo ya kila siku"),
+      label: tr("Utility bill payment promotion", "Tangazo la kulipa bili"),
+      image: "assets/ad-bills.svg",
     },
     {
-      title: tr("Scan. Pay. Done.", "Changanua. Lipa. Imekamilika."),
-      body: tr("Use QR payments at your favorite SmartPay merchants.", "Tumia malipo ya QR kwa wafanyabiashara unaowapenda."),
-      tag: tr("SmartPay QR", "SmartPay QR"),
+      label: tr("QR payment promotion", "Tangazo la malipo ya QR"),
+      image: "assets/ad-qr.svg",
     },
   ];
 
@@ -472,10 +521,8 @@ function renderAdSlider() {
     <section class="ad-slider" aria-label="${tr("Promotions", "Matangazo")}">
       <div class="ad-track">
         ${ads.map((ad) => `
-          <article class="ad-slide">
-            <span>${ad.tag}</span>
-            <h3>${ad.title}</h3>
-            <p>${ad.body}</p>
+          <article class="ad-slide" aria-label="${ad.label}">
+            <img class="ad-image" src="${ad.image}" alt="${ad.label}" loading="lazy">
           </article>
         `).join("")}
       </div>
@@ -1301,6 +1348,10 @@ function bindEvents() {
 
   document.querySelectorAll("[data-nav]").forEach((element) => {
     element.addEventListener("click", () => {
+      logActivity("navigation_click", {
+        from: appState.currentScreen,
+        to: element.dataset.nav,
+      });
       resetSensitiveViews();
       setScreen(element.dataset.nav);
     });
@@ -1310,6 +1361,10 @@ function bindEvents() {
     element.addEventListener("click", () => {
       appState.selectedMerchant = appState.merchants.find((merchant) => merchant.id === element.dataset.merchant) || appState.merchants[0];
       appState.pendingAmount = "";
+      logActivity("merchant_selected", {
+        merchantId: appState.selectedMerchant.id,
+        merchantName: appState.selectedMerchant.name,
+      });
       setScreen("amountEntry");
     });
   });
@@ -1318,6 +1373,9 @@ function bindEvents() {
     element.addEventListener("click", () => {
       appState.selectedBillCategory = element.dataset.billCategory;
       appState.fetchedBill = null;
+      logActivity("bill_category_selected", {
+        category: appState.selectedBillCategory,
+      });
       setScreen("utilityForm");
     });
   });
@@ -1325,6 +1383,9 @@ function bindEvents() {
   document.querySelectorAll("[data-transaction]").forEach((element) => {
     element.addEventListener("click", () => {
       appState.transactionDetailId = element.dataset.transaction;
+      logActivity("transaction_detail_opened", {
+        transactionId: appState.transactionDetailId,
+      });
       renderApp();
     });
   });
@@ -1332,6 +1393,10 @@ function bindEvents() {
 
 function handleAction(event) {
   const action = event.currentTarget.dataset.action;
+  logActivity("action_click", {
+    action,
+    screen: appState.currentScreen,
+  });
 
   switch (action) {
     case "toggle-language":
@@ -1769,4 +1834,5 @@ function updatePin() {
   setScreen("settings");
 }
 
+logActivity("app_launched", { screen: appState.currentScreen });
 renderApp();
